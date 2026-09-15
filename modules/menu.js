@@ -9,7 +9,7 @@
     let pb = QP.get("pb") || "payloads/";
     if (!pb.endsWith("/")) pb += "/";
 
-    // [PSAITO] payload segura por defecto tras el exploit: aio_reach_1320.js.
+    // [BragaTy] payload segura por defecto tras el exploit: aio_reach_1320.js.
     // BAGAGWA debe ser disparado explícitamente con ?auto=bagagwa_uaf_1320.js.
     // ?auto=<archivo.js> lo cambia; ?auto=0 lo desactiva.
     const DEF_PAYLOAD = "aio_reach_1320.js";
@@ -55,7 +55,7 @@
     const pnl = document.createElement("div");
     pnl.id = "pnl";
     pnl.innerHTML =
-        '<span class="h">PSAITO · PAYLOADS</span> ' +
+        '<span class="h">BragaTy · PAYLOADS</span> ' +
         '<span id="pmode">—</span><br>' +
         '<select id="psel"></select> <input id="pcustom" placeholder="o archivo.js">' +
         '<div><button id="prun">RUN</button>' +

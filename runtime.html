@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PSAITO · Runtime</title>
+<title>BragaTy · Runtime</title>
 <style>
 :root{
   --bg:    #030508;
   --bg2:   #060a10;
   --border:#0d1825;
   --blue:  #00cfe8;
-  --violet:#8a5cff;
-  --pink:  #ff4c8b;
+  --violet:#0756b8;
+  --pink:  #2aa7ff;
   --text:  #c0d0e8;
   --bright:#e8f0ff;
   --dim:   #1e2d42;
@@ -39,7 +39,7 @@ body::before{content:"";position:fixed;inset:0;
   transform-origin:bottom center;
   background:
     repeating-linear-gradient(0deg,rgba(0,207,232,.12) 0 1px,transparent 1px 40px),
-    repeating-linear-gradient(90deg,rgba(138,92,255,.10) 0 1px,transparent 1px 40px);
+    repeating-linear-gradient(90deg,rgba(7,86,184,.10) 0 1px,transparent 1px 40px);
   -webkit-mask-image:linear-gradient(transparent 10%,#000 95%);
   mask-image:linear-gradient(transparent 10%,#000 95%);
   animation:gridrun 1.6s linear infinite;
@@ -49,7 +49,7 @@ body::before{content:"";position:fixed;inset:0;
 /* travelling scan beam */
 .scanbar{
   position:fixed;left:0;right:0;top:0;height:3px;
-  background:linear-gradient(90deg,transparent,rgba(0,207,232,.45),rgba(138,92,255,.45),transparent);
+  background:linear-gradient(90deg,transparent,rgba(0,207,232,.45),rgba(7,86,184,.45),transparent);
   filter:blur(1px);
   animation:scan 11s cubic-bezier(.6,0,.4,1) infinite;
   opacity:0;pointer-events:none;z-index:20}
@@ -171,7 +171,7 @@ body::before{content:"";position:fixed;inset:0;
 #log-title::before{
   content:"\25CF \25CF \25CF";
   letter-spacing:.35em;margin-right:10px;font-size:8px;
-  color:var(--pink);text-shadow:0 0 8px rgba(255,76,139,.6)}
+  color:var(--pink);text-shadow:0 0 8px rgba(42,167,255,.6)}
 
 /* This is #scr — the ID the exploit JS writes to */
 #scr{
@@ -227,7 +227,7 @@ body::before{content:"";position:fixed;inset:0;
 
 <div id="topbar">
   <div class="tb-l">
-    <span class="tb-brand"><b>PSAITO</b> · research · wamphyre</span>
+    <span class="tb-brand"><b>BragaTy</b> · research · wamphyre</span>
     <span id="fw-label">FW ??.??</span>
   </div>
   <div class="tb-r">
@@ -315,7 +315,7 @@ body::before{content:"";position:fixed;inset:0;
     if (text.includes("SUCCESS")) {
       document.getElementById("pbar").style.width = "100%";
       document.getElementById("banner").className = "ok";
-      document.getElementById("banner").textContent = "✓ USERLAND ACHIEVED — PSAITO";
+      document.getElementById("banner").textContent = "✓ USERLAND ACHIEVED — BragaTy";
       document.getElementById("banner").style.display = "block";
     }
     if (text.includes("FAILED") || text.includes("failed")) {

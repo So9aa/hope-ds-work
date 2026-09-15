@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PSAITO · PS5 WebKit Userland</title>
+<title>BragaTy · PS5 WebKit Userland</title>
 <style>
 :root {
   --bg:     #030508;
@@ -11,8 +11,8 @@
   --border: #0e1929;
   --blue:   #00cfe8;
   --blue2:  #0a7ea8;
-  --violet: #8a5cff;
-  --pink:   #ff4c8b;
+  --violet: #0756b8;
+  --pink:   #2aa7ff;
   --dim:    #2a3a55;
   --muted:  #4a6080;
   --text:   #c8d8f0;
@@ -41,7 +41,7 @@ body::after{
   width:80vw;height:60vh;
   background:
     radial-gradient(ellipse,rgba(0,207,232,.10) 0%,transparent 65%),
-    radial-gradient(ellipse at 70% 10%,rgba(138,92,255,.08) 0%,transparent 60%);
+    radial-gradient(ellipse at 70% 10%,rgba(7,86,184,.08) 0%,transparent 60%);
   pointer-events:none}
 
 /* ── synthwave floor ── */
@@ -52,7 +52,7 @@ body::after{
   transform-origin:bottom center;
   background:
     repeating-linear-gradient(0deg,rgba(0,207,232,.18) 0 1px,transparent 1px 40px),
-    repeating-linear-gradient(90deg,rgba(138,92,255,.16) 0 1px,transparent 1px 40px);
+    repeating-linear-gradient(90deg,rgba(7,86,184,.16) 0 1px,transparent 1px 40px);
   -webkit-mask-image:linear-gradient(transparent 15%,#000 92%);
   mask-image:linear-gradient(transparent 15%,#000 92%);
   animation:gridrun 1.6s linear infinite;
@@ -62,7 +62,7 @@ body::after{
 /* ── travelling scan beam ── */
 .scanbar{
   position:fixed;left:0;right:0;top:0;height:3px;
-  background:linear-gradient(90deg,transparent,rgba(0,207,232,.5),rgba(138,92,255,.5),transparent);
+  background:linear-gradient(90deg,transparent,rgba(0,207,232,.5),rgba(7,86,184,.5),transparent);
   filter:blur(1px);
   animation:scan 9s cubic-bezier(.6,0,.4,1) infinite;
   opacity:0;pointer-events:none;z-index:5}
@@ -138,7 +138,7 @@ body::after{
 .brand{
   position:relative;display:inline-block;
   font-weight:800;letter-spacing:.16em;
-  background:linear-gradient(90deg,#6df3ff,#b98bff,#ff6fae,#6df3ff);
+  background:linear-gradient(90deg,#6df3ff,#168cff,#2aa7ff,#6df3ff);
   background-size:200% 100%;
   -webkit-background-clip:text;background-clip:text;
   -webkit-text-fill-color:transparent;color:transparent;
@@ -150,7 +150,7 @@ body::after{
   -webkit-background-clip:text;background-clip:text;
   -webkit-text-fill-color:transparent;color:transparent}
 .brand::before{
-  background:linear-gradient(90deg,var(--pink),var(--pink));
+  background:linear-gradient(90deg,var(--blue2),var(--blue2));
   background-clip:text;
   clip-path:inset(0 0 58% 0);
   transform:translate(-3px,-2px);
@@ -302,7 +302,7 @@ body::after{
 <body>
 
 <div id="topbar">
-  <span class="tb-brand"><b>PSAITO</b> &nbsp;·&nbsp; by wamphyre</span>
+  <span class="tb-brand"><b>BragaTy</b> &nbsp;·&nbsp; by wamphyre</span>
   <span class="tb-fw">WebKit Userland&nbsp;&nbsp;<span id="tb-fw-val">detecting…</span></span>
 </div>
 
@@ -313,7 +313,7 @@ body::after{
   <div></div><!-- spacer -->
 
   <div id="card">
-    <div class="title"><span class="brand" data-text="PSAITO">PSAITO</span></div>
+    <div class="title"><span class="brand" data-text="BragaTy">BragaTy</span></div>
     <div class="subtitle">PS5 WebKit Userland &bull; by <b>wamphyre</b> &bull; 2026<br>
       payload bridge + auto menu &bull; <b>09.00 &rarr; 13.60</b></div>
 
@@ -351,7 +351,7 @@ body::after{
   </div>
 
   <div id="foot">
-    <b>PSAITO</b> by <b>wamphyre</b> &bull; experimental project for educational
+    <b>BragaTy</b> by <b>wamphyre</b> &bull; experimental project for educational
     &amp; research use &bull; WebKit research baseline by <b>mansoor0x</b> &bull; 2026
   </div>
 </div>
