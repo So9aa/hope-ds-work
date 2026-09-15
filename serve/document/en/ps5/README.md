@@ -14,7 +14,8 @@ After the demonstration completes, PSAITO provides a small JavaScript
 runtime API (`malloc`, `read/write`, `syscall`, notifications) plus an
 on-screen payload panel, so analysis routines (`.js` probes) can be loaded
 and executed directly from GitHub — no PC, cables or extra tooling needed.
-The safe default routine is `hello_1320.js` (canary); destructive probes such
+The default routine is `aio_reach_1320.js`, a non-UAF AIO reachability probe;
+`hello_1320.js` remains available as a loader canary. Destructive probes such
 as `bagagwa_uaf_1320.js` must be selected explicitly with `?auto=`.
 
 ## Usage (PS5)
@@ -28,7 +29,7 @@ as `bagagwa_uaf_1320.js` must be selected explicitly with `?auto=`.
    automatically and prints its results.
 
 > **Warning**: destructive payloads are opt-in only. The default safe probe is
-> `hello_1320.js`; `bagagwa_uaf_1320.js` **fires a kernel UAF** and can
+> `aio_reach_1320.js`; `bagagwa_uaf_1320.js` **fires a kernel UAF** and can
 > hang/panic the console. For a first, non-destructive check use
 > `?auto=hello_1320.js` or `?auto=aio_reach_1320.js`.
 
@@ -36,7 +37,7 @@ Optional URL params (all of them propagate from `index.html` to `runtime.html`):
 append them to <https://wamphyre.github.io/PSAITO/>, e.g.
 `https://wamphyre.github.io/PSAITO/?max=3&rd=3000&auto=hello_1320.js`.
 - `?auto=<file.js>` — auto-run routine (`auto=0` disables; default safe
-  payload is `hello_1320.js`; destructive payloads require explicit opt-in)
+  payload is `aio_reach_1320.js`; destructive payloads require explicit opt-in)
 - `?pb=<base>` — payload base URL (default same-origin `payloads/`)
 - `?logserver=<url>` — remote log endpoint (see **Console log** below)
 - `?rop=0` — force bridge **DIRECT** mode (skip libkernel .text gadget scan)
