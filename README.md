@@ -14,8 +14,8 @@ After the demonstration completes, PSAITO provides a small JavaScript
 runtime API (`malloc`, `read/write`, `syscall`, notifications) plus an
 on-screen payload panel, so analysis routines (`.js` probes) can be loaded
 and executed directly from GitHub — no PC, cables or extra tooling needed.
-The default routine is `bagagwa_uaf_1320.js` (the BAGAGWA `aio_multi_wait`
-mode 0 UAF); other probes can be selected from the panel.
+The safe default routine is `hello_1320.js` (canary); destructive probes such
+as `bagagwa_uaf_1320.js` must be selected explicitly with `?auto=`.
 
 ## Usage (PS5)
 
@@ -27,16 +27,16 @@ mode 0 UAF); other probes can be selected from the panel.
 4. Press **Launch** — wait for the runtime panel; the default probe starts
    automatically and prints its results.
 
-> **Warning**: the default auto-run is `bagagwa_uaf_1320.js`, which **fires a
-> kernel UAF** and can hang/panic the console. For a first, non-destructive
-> check use `?auto=hello_1320.js` (canary) or `?auto=aio_reach_1320.js`
-> (AIO reachability gate).
+> **Warning**: destructive payloads are opt-in only. The default safe probe is
+> `hello_1320.js`; `bagagwa_uaf_1320.js` **fires a kernel UAF** and can
+> hang/panic the console. For a first, non-destructive check use
+> `?auto=hello_1320.js` or `?auto=aio_reach_1320.js`.
 
 Optional URL params (all of them propagate from `index.html` to `runtime.html`):
 append them to <https://wamphyre.github.io/PSAITO/>, e.g.
 `https://wamphyre.github.io/PSAITO/?max=3&rd=3000&auto=hello_1320.js`.
-- `?auto=<file.js>` — auto-run routine (`auto=0` disables; default
-  `bagagwa_uaf_1320.js`)
+- `?auto=<file.js>` — auto-run routine (`auto=0` disables; default safe
+  payload is `hello_1320.js`; destructive payloads require explicit opt-in)
 - `?pb=<base>` — payload base URL (default same-origin `payloads/`)
 - `?logserver=<url>` — remote log endpoint (see **Console log** below)
 - `?rop=0` — force bridge **DIRECT** mode (skip libkernel .text gadget scan)
@@ -142,9 +142,9 @@ gets the browser-process RW primitive and publishes `window.__PS5_CTX` +
 A payload **cannot run before stage 1 succeeds** — `onBridgeReady` (and the
 auto-run 1.5 s later) only fires after `*** SUCCESS ***`.
 
-Once the canary passes, the default (`bagagwa_uaf_1320.js`) fires the BAGAGWA
-`aio_multi_wait` mode 0 UAF (see 3b). A lighter alternative to first confirm
-AIO reachability is `aio_reach_1320.js`:
+Once the canary passes, you can explicitly opt in to the BAGAGWA
+`aio_multi_wait` mode 0 UAF by setting `?auto=bagagwa_uaf_1320.js` (see 3b).
+A lighter alternative to first confirm AIO reachability is `aio_reach_1320.js`:
 
 ```
 https://wamphyre.github.io/PSAITO/?log=1&logserver=http://<PC-IP>:8080/log&max=3&rd=3000&auto=aio_reach_1320.js
