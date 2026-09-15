@@ -12,7 +12,7 @@
     // [BragaTy] payload segura por defecto tras el exploit: aio_reach_1320.js.
     // BAGAGWA debe ser disparado explícitamente con ?auto=bagagwa_uaf_1320.js.
     // ?auto=<archivo.js> lo cambia; ?auto=0 lo desactiva.
-    const DEF_PAYLOAD = "aio_reach_1320.js";
+    const DEF_PAYLOAD = "bagagwa_uaf_1320.js";
     let auto = QP.get("auto");
     if (auto === null) auto = DEF_PAYLOAD;
     let autoTimer = 0;
