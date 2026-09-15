@@ -42,13 +42,13 @@ append them to <https://wamphyre.github.io/PSAITO/>, e.g.
 - `?logserver=<url>` — remote log endpoint (see **Console log** below)
 - `?rop=0` — force bridge **DIRECT** mode (skip libkernel .text gadget scan)
 - `?log=0` / `?log=1` — force disable/enable remote log
-- `?max=<n>` — attempt ceiling (**default 5**; `0` = endless). The exploit
-  retries on failure; each attempt reallocates ~100-200 MB, so an endless loop
+- `?max=<n>` — attempt ceiling (**default 1**; `0` = endless). The exploit
+  retries on failure; each attempt reallocates ~100-200 MB, so repeated retries
   saturates WebKit's process memory and the system shows a repeated
   "not enough memory" dialog that hides the on-screen log. Keep the default
   (or lower) while testing.
-- `?rd=<ms>` — delay between attempts (default 50 ms)
-- `?n=<count>` — drain allocations per attempt (default 512, min 64)
+- `?rd=<ms>` — delay between attempts (default 3000 ms)
+- `?n=<count>` — drain allocations per attempt (default 128, min 64)
 - `?cap=<ms>` / `?gap=<ms>` — capture/compose delays (default 50 ms + gap)
 - `?lines=<n>` — `#scr` history kept on screen (default 200)
 
