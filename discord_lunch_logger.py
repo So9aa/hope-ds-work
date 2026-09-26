@@ -35,7 +35,7 @@ def send_message(webhook_url: str, content: str) -> int:
         return 1
 
 
-def build_status_text(status: str, detail: str, exit_code: int | None, repo: str) -> str:
+def build_status_text(status: str, detail: str, exit_code: int | None, repo: str, log_text: str = "") -> str:
     emoji = "✅" if status.lower() in {"done", "success", "ok"} else "❌"
     title = "Lunch completed" if status.lower() in {"done", "success", "ok"} else "Lunch failed"
     if exit_code is not None:
@@ -43,11 +43,27 @@ def build_status_text(status: str, detail: str, exit_code: int | None, repo: str
     else:
         exit_info = ""
     when = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    return (
+    message = (
         f"{emoji} {title} {repo}{exit_info}\n"
         f"{detail}\n"
         f"Time: {when}"
     )
+    if log_text.strip():
+        safe_log = log_text.strip()
+        if len(safe_log) > 3000:
+            safe_log = safe_log[-3000:]
+        message += "\n\nConsole log:\n```text\n" + safe_log + "\n```"
+    return message
+
+
+def read_log_file(path: str | None) -> str:
+    if not path:
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return ""
 
 
 def parse_args():
@@ -57,12 +73,14 @@ def parse_args():
     parser.add_argument("--exit-code", type=int, default=None)
     parser.add_argument("--repo", default="hope-ds-work")
     parser.add_argument("--webhook", default=DEFAULT_WEBHOOK_URL)
+    parser.add_argument("--log-file", default=None)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    message = build_status_text(args.status, args.detail, args.exit_code, args.repo)
+    log_text = read_log_file(args.log_file)
+    message = build_status_text(args.status, args.detail, args.exit_code, args.repo, log_text)
     http_code = send_message(args.webhook, message)
     if http_code in {200, 204}:
         return 0

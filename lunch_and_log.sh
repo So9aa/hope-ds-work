@@ -9,8 +9,9 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
-"$@"
-status=$?
+LOG_FILE=$(mktemp)
+"$@" 2>&1 | tee "$LOG_FILE"
+status=${PIPESTATUS[0]}
 
 if [ "$status" -eq 0 ]; then
   python3 /workspaces/hope-ds-work/discord_lunch_logger.py \
@@ -18,14 +19,17 @@ if [ "$status" -eq 0 ]; then
     --exit-code "$status" \
     --detail "Command: $*" \
     --repo "$REPO_NAME" \
-    --webhook "$WEBHOOK_URL"
+    --webhook "$WEBHOOK_URL" \
+    --log-file "$LOG_FILE"
 else
   python3 /workspaces/hope-ds-work/discord_lunch_logger.py \
     --status failed \
     --exit-code "$status" \
     --detail "Command: $*" \
     --repo "$REPO_NAME" \
-    --webhook "$WEBHOOK_URL"
+    --webhook "$WEBHOOK_URL" \
+    --log-file "$LOG_FILE"
 fi
 
+rm -f "$LOG_FILE"
 exit "$status"

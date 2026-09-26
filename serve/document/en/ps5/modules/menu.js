@@ -59,6 +59,8 @@
         '<span id="pmode">—</span><br>' +
         '<select id="psel"></select> <input id="pcustom" placeholder="o archivo.js">' +
         '<div><button id="prun">RUN</button>' +
+        '<button id="ptestall" style="background:#0d7a52">TEST ALL</button>' +
+        '<button id="pgithub" style="background:#6f42c1">GITHUB LOG</button>' +
         '<button id="pstop" style="background:#552222">RESET</button>' +
         '<button id="pstop2" style="background:#7a1f1f">STOP</button>' +
         '<button id="plogdl" style="background:#555f00">DOWNLOAD LOG</button>' +
@@ -208,7 +210,57 @@
     function runNamed() {
         runFile((pnl.querySelector("#pcustom").value.trim()) || sel.value);
     }
-
+    function getLogText() {
+        const text = logBuf.join("\n");
+        return text && text.trim() ? text : (pnl.querySelector("#plg").textContent || "No payload log recorded yet.");
+    }
+    function openGitHubIssueWithLog() {
+        const title = "PS5 payload test log " + new Date().toISOString().replace(/[:.]/g, "-");
+        const body = [
+            "## Console log",
+            "",
+            "```text",
+            getLogText(),
+            "```",
+            "",
+            "## Browser",
+            "- User agent: " + navigator.userAgent,
+            "- URL: " + location.href,
+            "",
+            "## Notes",
+            "- Please paste the payload result here and keep the log below.",
+        ].join("\n");
+        const url = "https://github.com/So9aa/hope-ds-work/issues/new?title=" + encodeURIComponent(title) + "&body=" + encodeURIComponent(body);
+        try {
+            window.open(url, "_blank", "noopener,noreferrer");
+            glog("== opened GitHub issue draft with current console log ==");
+        } catch (e) {
+            glog("!! GitHub issue draft failed: " + e);
+        }
+    }
+    function runAllPayloads() {
+        const queue = KNOWN.slice();
+        glog("== TEST ALL PAYLOADS start (" + queue.length + ") ==");
+        let index = 0;
+        function next() {
+            if (index >= queue.length) {
+                glog("== TEST ALL PAYLOADS done ==");
+                return;
+            }
+            const name = queue[index++];
+            glog("== [" + index + "/" + queue.length + "] " + name + " ==");
+            fetchText(pb + encodeURIComponent(name), (err, src) => {
+                if (err) {
+                    glog("!! fetch " + name + ": " + err);
+                    setTimeout(next, 1500);
+                    return;
+                }
+                runSource(name, src);
+                setTimeout(next, 1500);
+            });
+        }
+        next();
+    }
 
     function stopExploit() {
         try {
@@ -222,6 +274,8 @@
     }
 
     pnl.querySelector("#prun").addEventListener("click", runNamed);
+    pnl.querySelector("#ptestall").addEventListener("click", runAllPayloads);
+    pnl.querySelector("#pgithub").addEventListener("click", openGitHubIssueWithLog);
     pnl.querySelector("#plogdl").addEventListener("click", downloadLog);
     dlfab.addEventListener("click", downloadLog);
     pnl.querySelector("#pstop2").addEventListener("click", stopExploit);
