@@ -62,6 +62,7 @@
         '<div><button id="prun" disabled>RUN</button>' +
         '<button id="ptestall" style="background:#0d7a52" disabled>TEST ALL</button>' +
         '<button id="pgithub" style="background:#6f42c1">GITHUB LOG</button>' +
+        '<button id="pdiscord" style="background:#5865f2">SEND TO DISCORD</button>' +
         '<button id="pstop" style="background:#552222">RESET</button>' +
         '<button id="pstop2" style="background:#7a1f1f">STOP</button>' +
         '<button id="plogdl" style="background:#555f00">DOWNLOAD LOG</button>' +
@@ -214,24 +215,54 @@
         }
     })();
 
-    async function sendDiscordPayloadLog(name, status) {
-        const text = logBuf.slice(PAGE_LOG_START).join("\n");
-        if (!DISCORD_WEBHOOK_URL || !text || !text.trim()) return;
+    async function uploadDiscordLog(label, text, filename) {
+        if (!DISCORD_WEBHOOK_URL || !text || !String(text).trim())
+            throw new Error("Discord webhook is not configured or log is empty");
         const payloadText = String(text).trim();
-        const label = `**${status.toUpperCase()}** payload: ${name}`;
         try {
             const form = new FormData();
             form.append("payload_json", JSON.stringify({
                 content: label + "\n" + payloadText.slice(0, 1800)
             }));
-            form.append("file", new Blob([payloadText], { type: "text/plain" }), name.replace(/[^a-z0-9_.-]/gi, "_") + ".log.txt");
+            form.append("file", new Blob([payloadText], { type: "text/plain" }), filename);
             await fetch(DISCORD_WEBHOOK_URL, {
                 method: "POST",
                 body: form,
                 mode: "no-cors",
                 cache: "no-store"
             });
-        } catch (e) {}
+        } catch (e) {
+            throw new Error("Discord request failed: " + String(e && e.message || e));
+        }
+    }
+    async function sendDiscordPayloadLog(name, status) {
+        const text = logBuf.slice(PAGE_LOG_START).join("\n");
+        if (!text || !text.trim()) return;
+        const filename = name.replace(/[^a-z0-9_.-]/gi, "_") + ".log.txt";
+        try {
+            await uploadDiscordLog(`**${status.toUpperCase()}** payload: ${name}`, text, filename);
+        } catch (e) {
+            glog("!! " + String(e && e.message || e));
+        }
+    }
+    async function sendFullLogToDiscord() {
+        const button = pnl.querySelector("#pdiscord");
+        captureScr();
+        const text = getLogText();
+        if (!text || !text.trim()) {
+            glog("!! no log content to send");
+            return;
+        }
+        button.disabled = true;
+        try {
+            const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+            await uploadDiscordLog("**MANUAL** PS5 run log", text, `ps5-run-${stamp}.log.txt`);
+            glog("== Discord log upload request sent; check the channel for receipt ==");
+        } catch (e) {
+            glog("!! Discord log upload failed: " + String(e && e.message || e));
+        } finally {
+            button.disabled = false;
+        }
     }
     async function runSource(name, src) {
         if (!bridgeApiReady()) {
@@ -340,6 +371,7 @@
     pnl.querySelector("#prun").addEventListener("click", runNamed);
     pnl.querySelector("#ptestall").addEventListener("click", runAllPayloads);
     pnl.querySelector("#pgithub").addEventListener("click", openGitHubIssueWithLog);
+    pnl.querySelector("#pdiscord").addEventListener("click", sendFullLogToDiscord);
     pnl.querySelector("#plogdl").addEventListener("click", downloadLog);
     dlfab.addEventListener("click", downloadLog);
     pnl.querySelector("#pstop2").addEventListener("click", stopExploit);
