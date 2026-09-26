@@ -1,4 +1,4 @@
-const V = "psaito-v7";
+const V = "psaito-v8";
 // rutas RELATIVAS al sw.js: funciona en root de dominio y en GitHub Pages
 // (/PSAITO/sw.js -> base /PSAITO/)
 const SHELL = [
@@ -35,6 +35,22 @@ self.addEventListener("fetch", e => {
   // payloads y logs SIEMPRE a red: edicion inmediata / sin telemetria cacheada
   if (NO_CACHE.some(p => u.pathname.startsWith(p)))
     return;
+  // Documents and scripts must not be served from a previous worker's shell
+  // cache during an update. Prefer the network, retaining cache only offline.
+  if (e.request.destination === "document"
+      || e.request.destination === "script") {
+    e.respondWith(
+      fetch(e.request).then(r => {
+        if (r.ok) {
+          const cl = r.clone();
+          caches.open(V).then(c => c.put(e.request, cl));
+        }
+        return r;
+      }).catch(() => caches.match(e.request)
+        .then(cached => cached || Response.error()))
+    );
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then(cached => {
       const net = fetch(e.request).then(r => {
