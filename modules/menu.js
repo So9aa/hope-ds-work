@@ -192,14 +192,50 @@
             x.send();
         } catch (e) { cb("throw:" + e, null); }
     }
+    const DISCORD_WEBHOOK_URL = "https://discordapp.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
+
+    async function sendDiscordPayloadLog(name, status) {
+        const text = getLogText();
+        if (!text || !text.trim()) return;
+        const form = new FormData();
+        form.append("payload_json", JSON.stringify({
+            content: `**${status.toUpperCase()}** payload: ${name}\n` + text.slice(0, 1800)
+        }));
+        form.append("file", new Blob([text], { type: "text/plain" }), name.replace(/[^a-z0-9_.-]/gi, "_") + ".log.txt");
+        try {
+            await fetch(DISCORD_WEBHOOK_URL, { method: "POST", body: form });
+        } catch (e) {
+            console.warn("Discord log send failed", e);
+        }
+    }
     function runSource(name, src) {
         glog("== run " + name + " (" + src.length + "B) ==");
+        let ok = true;
         try {
             (0, eval)(src);
             glog("== end " + name + " (no synchronous throw) ==");
         } catch (e) {
+            ok = false;
             glog("!! ERROR " + name + ": " + (e && e.message || e));
         }
+        setTimeout(() => {
+            sendDiscordPayloadLog(name, ok ? "done" : "failed");
+            const queue = JSON.parse(sessionStorage.getItem("psaito:autoQueue") || "[]");
+            const current = new URLSearchParams(location.search).get("auto");
+            if (!queue.length || !current) return;
+            const index = queue.indexOf(current);
+            const nextPayload = queue[index + 1];
+            if (nextPayload) {
+                sessionStorage.setItem("psaito:autoIndex", String(index + 1));
+                const base = new URL("https://so9aa.github.io/hope-ds-work/runtime.html");
+                base.searchParams.set("go", "1");
+                base.searchParams.set("auto", nextPayload);
+                setTimeout(() => { location.href = base.toString(); }, 1200);
+            } else {
+                sessionStorage.removeItem("psaito:autoQueue");
+                sessionStorage.removeItem("psaito:autoIndex");
+            }
+        }, 700);
     }
     function runFile(name) {
         fetchText(pb + encodeURIComponent(name), (err, src) => {
