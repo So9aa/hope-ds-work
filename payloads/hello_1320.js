@@ -18,13 +18,13 @@
     if (!ps5 || ps5.ready !== true || typeof api.syscall !== "function"
         || !api.SYSCALL) {
         await say("[canary] bridge not ready; skipped getpid");
-        return;
+        return false;
     }
 
     if (ps5.mode !== "ROP") {
         await say("[canary] bridge ready, but mode=" + ps5.mode
             + "; skipped getpid");
-        return;
+        return false;
     }
 
     try {
@@ -33,7 +33,9 @@
             ? api.toHex(pid) : String(pid);
         await say("[canary] getpid ok = " + pidText);
         await say("[canary] DONE - payload completed without crash");
+        return true;
     } catch (e) {
         await say("[canary] getpid failed: " + String(e));
+        return false;
     }
 })();

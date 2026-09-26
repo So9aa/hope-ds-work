@@ -227,9 +227,14 @@
         glog("== run " + name + " (" + src.length + "B) ==");
         let ok = true;
         try {
-            const result = (0, eval)(src);
-            if (result && typeof result.then === "function") await result;
-            glog("== end " + name + " (no synchronous throw) ==");
+            let result = (0, eval)(src);
+            if (result && typeof result.then === "function") result = await result;
+            if (result === false) {
+                ok = false;
+                glog("!! payload reported unsuccessful completion: " + name);
+            } else {
+                glog("== end " + name + " ==");
+            }
         } catch (e) {
             ok = false;
             glog("!! ERROR " + name + ": " + (e && e.message || e));
