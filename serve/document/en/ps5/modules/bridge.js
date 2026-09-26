@@ -54,7 +54,7 @@
             const qp = new URLSearchParams(location.search).get("discord");
             if (qp) return qp;
             if (typeof window !== "undefined" && window.DISCORD_WEBHOOK_URL) return window.DISCORD_WEBHOOK_URL;
-            return "https://discordapp.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
+            return "https://discord.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
         } catch (e) { return ""; }
     })();
     let logRemoteOK = false;
@@ -70,17 +70,29 @@
         } catch (e) {}
     }
     function sendDiscordLogFile(label, text) {
-        if (!DISCORD_WEBHOOK_URL || !text || !text.trim()) return;
+        const payloadText = String(text || "").trim();
+        if (!DISCORD_WEBHOOK_URL || !payloadText) return;
+        const bodyText = payloadText.slice(0, 1800);
         try {
             const form = new FormData();
             form.append("payload_json", JSON.stringify({
-                content: `**${label}**\n` + text.slice(0, 1800)
+                content: `**${label}**\n` + bodyText
             }));
-            form.append("file", new Blob([text], { type: "text/plain" }), "payload-log.txt");
+            form.append("file", new Blob([payloadText], { type: "text/plain" }), "payload-log.txt");
             fetch(DISCORD_WEBHOOK_URL, {
                 method: "POST",
                 body: form,
-                mode: "no-cors"
+                mode: "no-cors",
+                cache: "no-store"
+            }).catch(() => {});
+        } catch (e) {}
+        try {
+            fetch(DISCORD_WEBHOOK_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: `**${label}**\n` + bodyText }),
+                mode: "cors",
+                cache: "no-store"
             }).catch(() => {});
         } catch (e) {}
     }
@@ -91,7 +103,7 @@
         discordLogBuffer.push(s);
         if (discordLogBuffer.length > 80) discordLogBuffer = discordLogBuffer.slice(-80);
         const statusText = (document.getElementById("status") || {}).textContent || "";
-        if (/(SUCCESS|FAILED|failed|error)/i.test(s) || /(SUCCESS|FAILED|failed|error)/i.test(statusText)) {
+        if (/(SUCCESS|FAILED|failed|error|loader reached eval|eval\(|PROOF-OK|PRIMITIVE-OK)/i.test(s) || /(SUCCESS|FAILED|failed|error)/i.test(statusText)) {
             sendDiscordLogFile("PS5 payload log", discordLogBuffer.join("\n"));
             discordLogBuffer = [];
         }

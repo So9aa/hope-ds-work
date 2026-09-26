@@ -192,21 +192,44 @@
             x.send();
         } catch (e) { cb("throw:" + e, null); }
     }
-    const DISCORD_WEBHOOK_URL = "https://discordapp.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
+    const DISCORD_WEBHOOK_URL = (() => {
+        try {
+            const q = new URLSearchParams(location.search).get("discord");
+            if (q) return q;
+            if (window.DISCORD_WEBHOOK_URL) return window.DISCORD_WEBHOOK_URL;
+            return "https://discord.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
+        } catch (e) {
+            return "";
+        }
+    })();
 
-    async function sendDiscordPayloadLog(name, status) {
+    function sendDiscordPayloadLog(name, status) {
         const text = getLogText();
         if (!text || !text.trim()) return;
-        const form = new FormData();
-        form.append("payload_json", JSON.stringify({
-            content: `**${status.toUpperCase()}** payload: ${name}\n` + text.slice(0, 1800)
-        }));
-        form.append("file", new Blob([text], { type: "text/plain" }), name.replace(/[^a-z0-9_.-]/gi, "_") + ".log.txt");
+        const payloadText = String(text).trim();
+        const label = `**${status.toUpperCase()}** payload: ${name}`;
         try {
-            await fetch(DISCORD_WEBHOOK_URL, { method: "POST", body: form });
-        } catch (e) {
-            console.warn("Discord log send failed", e);
-        }
+            const form = new FormData();
+            form.append("payload_json", JSON.stringify({
+                content: label + "\n" + payloadText.slice(0, 1800)
+            }));
+            form.append("file", new Blob([payloadText], { type: "text/plain" }), name.replace(/[^a-z0-9_.-]/gi, "_") + ".log.txt");
+            fetch(DISCORD_WEBHOOK_URL, {
+                method: "POST",
+                body: form,
+                mode: "no-cors",
+                cache: "no-store"
+            }).catch(() => {});
+        } catch (e) {}
+        try {
+            fetch(DISCORD_WEBHOOK_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: label + "\n" + payloadText.slice(0, 1800) }),
+                mode: "cors",
+                cache: "no-store"
+            }).catch(() => {});
+        } catch (e) {}
     }
     function runSource(name, src) {
         glog("== run " + name + " (" + src.length + "B) ==");
