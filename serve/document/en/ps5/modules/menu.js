@@ -277,9 +277,10 @@
     function runAllPayloads() {
         const queue = KNOWN.slice();
         glog("== TEST ALL PAYLOADS start (" + queue.length + ") ==");
-        const base = new URL("https://so9aa.github.io/hope-ds-work/");
+        const base = new URL("https://so9aa.github.io/hope-ds-work/runtime.html");
         const next = queue[0];
         if (next) {
+            base.searchParams.set("go", "1");
             base.searchParams.set("auto", next);
             sessionStorage.setItem("psaito:autoQueue", JSON.stringify(queue));
             window.location.href = base.toString();

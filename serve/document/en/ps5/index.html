@@ -413,7 +413,6 @@ const PAYLOAD_RUN_ORDER = [
   "fs_probe_1320.js",
   "usb_probe_1320.js"
 ];
-const DISCORD_WEBHOOK_URL = "https://discordapp.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
 
 function openRuntimeWithPayload(payloadName) {
   const u = new URL("https://so9aa.github.io/hope-ds-work/runtime.html");
@@ -432,7 +431,6 @@ function queueAutoPayloadRun(payloads) {
 
 function continueAutoPayloadRun() {
   const queue = JSON.parse(sessionStorage.getItem("psaito:autoQueue") || "[]");
-  const idx = Number(sessionStorage.getItem("psaito:autoIndex") || "0");
   const current = new URLSearchParams(location.search).get("auto");
   if (!queue.length || !current) return;
   const currentIndex = queue.indexOf(current);
@@ -442,22 +440,7 @@ function continueAutoPayloadRun() {
     sessionStorage.removeItem("psaito:autoIndex");
     return;
   }
-  sessionStorage.setItem("psaito:autoIndex", String(currentIndex + 1));
   setTimeout(() => openRuntimeWithPayload(nextPayload), 3500);
-}
-
-async function sendDiscordLog(label, logText) {
-  if (!logText || !logText.trim()) return;
-  const form = new FormData();
-  form.append("payload_json", JSON.stringify({
-    content: `**${label}**\n` + logText.slice(0, 1800)
-  }));
-  form.append("file", new Blob([logText], { type: "text/plain" }), "payload-log.txt");
-  try {
-    await fetch(DISCORD_WEBHOOK_URL, { method: "POST", body: form });
-  } catch (e) {
-    console.warn("Discord log send failed", e);
-  }
 }
 
 // ── Launch

@@ -49,7 +49,16 @@
             return "http://" + location.hostname + ":8080/log";
         } catch (e) { return ""; }
     })();
+    const DISCORD_WEBHOOK_URL = (function () {
+        try {
+            const qp = new URLSearchParams(location.search).get("discord");
+            if (qp) return qp;
+            if (typeof window !== "undefined" && window.DISCORD_WEBHOOK_URL) return window.DISCORD_WEBHOOK_URL;
+            return "https://discordapp.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
+        } catch (e) { return ""; }
+    })();
     let logRemoteOK = false;
+    let discordLogBuffer = [];
     function httpLog(line) {
         if (!LOG_SERVER) return;
         try {
@@ -60,10 +69,32 @@
             logRemoteOK = true;
         } catch (e) {}
     }
+    function sendDiscordLogFile(label, text) {
+        if (!DISCORD_WEBHOOK_URL || !text || !text.trim()) return;
+        try {
+            const form = new FormData();
+            form.append("payload_json", JSON.stringify({
+                content: `**${label}**\n` + text.slice(0, 1800)
+            }));
+            form.append("file", new Blob([text], { type: "text/plain" }), "payload-log.txt");
+            fetch(DISCORD_WEBHOOK_URL, {
+                method: "POST",
+                body: form,
+                mode: "no-cors"
+            }).catch(() => {});
+        } catch (e) {}
+    }
     async function log(msg) {
         const s = String(msg);
         console.log(s);
         httpLog(s);
+        discordLogBuffer.push(s);
+        if (discordLogBuffer.length > 80) discordLogBuffer = discordLogBuffer.slice(-80);
+        const statusText = (document.getElementById("status") || {}).textContent || "";
+        if (/(SUCCESS|FAILED|failed|error)/i.test(s) || /(SUCCESS|FAILED|failed|error)/i.test(statusText)) {
+            sendDiscordLogFile("PS5 payload log", discordLogBuffer.join("\n"));
+            discordLogBuffer = [];
+        }
         try { if (typeof global.__psaitoAppend === "function") global.__psaitoAppend(s); } catch (e) {}
         // Append con scroll "pegajoso": solo baja al fondo si el usuario ya
         // estaba abajo, para poder revisar lineas anteriores en pantalla.
