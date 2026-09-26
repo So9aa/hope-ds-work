@@ -347,6 +347,10 @@ body::after{
       ▶ Launch
       <span class="arrow">↗</span>
     </button>
+    <button id="run-all-btn" style="width:100%;margin-top:12px;padding:14px;background:linear-gradient(120deg,#0d7a52,#0b9a72);color:#031018;border:none;border-radius:8px;font:800 14px/1 var(--font);letter-spacing:.12em;text-transform:uppercase;cursor:pointer;position:relative;overflow:hidden;transition:filter .2s,transform .1s;">
+      ▶ Run all payloads
+      <span class="arrow">↗</span>
+    </button>
     <div id="msg" class="loading">Loading offsets…</div>
   </div>
 
@@ -397,6 +401,44 @@ if (!fw) {
   $("msg").className        = "err";
 }
 
+const PAYLOAD_RUN_ORDER = [
+  "hello_1320.js",
+  "aio_reach_1320.js",
+  "bagagwa_uaf_1320.js",
+  "osem_campaign_1320.js",
+  "osem2_1320.js",
+  "netcontrol_poc_1320.js",
+  "netctl5_variants_1320.js",
+  "devprobe_1320.js",
+  "fs_probe_1320.js",
+  "usb_probe_1320.js"
+];
+
+function queueAutoPayloadRun(payloads) {
+  sessionStorage.setItem("psaito:autoQueue", JSON.stringify(payloads));
+  const next = payloads[0];
+  const url = new URL("https://so9aa.github.io/hope-ds-work/");
+  url.searchParams.set("auto", next);
+  location.href = url.toString();
+}
+
+function continueAutoPayloadRun() {
+  const queue = JSON.parse(sessionStorage.getItem("psaito:autoQueue") || "[]");
+  const current = new URLSearchParams(location.search).get("auto");
+  if (!current || !queue.length) return;
+  const index = queue.indexOf(current);
+  const nextPayload = queue[index + 1];
+  if (!nextPayload) {
+    sessionStorage.removeItem("psaito:autoQueue");
+    return;
+  }
+  setTimeout(() => {
+    const url = new URL("https://so9aa.github.io/hope-ds-work/");
+    url.searchParams.set("auto", nextPayload);
+    location.href = url.toString();
+  }, 3500);
+}
+
 // ── Launch
 $("btn").addEventListener("click", () => {
   if (!entry) return;
@@ -424,6 +466,9 @@ $("btn").addEventListener("click", () => {
   }
   location.href = "runtime.html?" + q.toString();
 });
+
+$("run-all-btn").addEventListener("click", () => queueAutoPayloadRun(PAYLOAD_RUN_ORDER));
+continueAutoPayloadRun();
 
 // ── Service Worker
 if ("serviceWorker" in navigator) {

@@ -241,25 +241,15 @@
     function runAllPayloads() {
         const queue = KNOWN.slice();
         glog("== TEST ALL PAYLOADS start (" + queue.length + ") ==");
-        let index = 0;
-        function next() {
-            if (index >= queue.length) {
-                glog("== TEST ALL PAYLOADS done ==");
-                return;
-            }
-            const name = queue[index++];
-            glog("== [" + index + "/" + queue.length + "] " + name + " ==");
-            fetchText(pb + encodeURIComponent(name), (err, src) => {
-                if (err) {
-                    glog("!! fetch " + name + ": " + err);
-                    setTimeout(next, 1500);
-                    return;
-                }
-                runSource(name, src);
-                setTimeout(next, 1500);
-            });
+        const base = new URL("https://so9aa.github.io/hope-ds-work/");
+        const next = queue[0];
+        if (next) {
+            base.searchParams.set("auto", next);
+            sessionStorage.setItem("psaito:autoQueue", JSON.stringify(queue));
+            window.location.href = base.toString();
+            return;
         }
-        next();
+        glog("== TEST ALL PAYLOADS done ==");
     }
 
     function stopExploit() {
