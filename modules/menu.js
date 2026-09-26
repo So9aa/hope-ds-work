@@ -38,6 +38,7 @@
         "z-index:50;display:none}" +
         "#pnl button{background:#0057e0;color:#fff;border:0;border-radius:4px;" +
         "padding:6px 10px;font-weight:600;cursor:pointer;margin:2px}" +
+        "#pnl button:disabled{opacity:.45;cursor:not-allowed}" +
         "#pnl input{width:150px;background:#030508;color:#c0d0e8;" +
         "border:1px solid #0d1825;border-radius:4px;padding:4px}" +
         "#plg{background:#030508;border:1px solid #0d1825;border-radius:4px;" +
@@ -58,15 +59,15 @@
         '<span class="h">BragaTy · PAYLOADS</span> ' +
         '<span id="pmode">—</span><br>' +
         '<select id="psel"></select> <input id="pcustom" placeholder="o archivo.js">' +
-        '<div><button id="prun">RUN</button>' +
-        '<button id="ptestall" style="background:#0d7a52">TEST ALL</button>' +
+        '<div><button id="prun" disabled>RUN</button>' +
+        '<button id="ptestall" style="background:#0d7a52" disabled>TEST ALL</button>' +
         '<button id="pgithub" style="background:#6f42c1">GITHUB LOG</button>' +
         '<button id="pstop" style="background:#552222">RESET</button>' +
         '<button id="pstop2" style="background:#7a1f1f">STOP</button>' +
         '<button id="plogdl" style="background:#555f00">DOWNLOAD LOG</button>' +
         '<button id="plogclr" style="background:#333">CLEAR</button></div>' +
         'URL: <input id="purl" style="width:290px" placeholder="http://host/payload.js">' +
-        '<div><button id="purlrun" style="background:#00764f">RUN URL</button></div>' +
+        '<div><button id="purlrun" style="background:#00764f" disabled>RUN URL</button></div>' +
         '<div id="plg">ready.</div>';
     document.body.appendChild(pnl);
     // El panel se muestra DESDE YA (no solo tras onBridgeReady): si el exploit
@@ -167,6 +168,15 @@
         d.textContent = (d.textContent + "\n" + s).split("\n").slice(-1000).join("\n");
         if (atBottom) d.scrollTop = d.scrollHeight;
     }
+    function bridgeApiReady() {
+        return !!(global.PS5 && global.PS5.ready === true
+            && typeof global.syscall === "function"
+            && typeof global.SYSCALL === "object");
+    }
+    function setPayloadControlsEnabled(enabled) {
+        for (const id of ["#prun", "#ptestall", "#purlrun"])
+            pnl.querySelector(id).disabled = !enabled;
+    }
     global.__psaitoLog = () => logBuf.join("\n");
     global.__psaitoAppend = (s) => logAll(s);
     function downloadLog() {
@@ -224,6 +234,10 @@
         } catch (e) {}
     }
     async function runSource(name, src) {
+        if (!bridgeApiReady()) {
+            glog("!! blocked payload launch: bridge API is not ready");
+            return;
+        }
         glog("== run " + name + " (" + src.length + "B) ==");
         let ok = true;
         try {
@@ -360,7 +374,16 @@
     }
 
     global.onBridgeReady = function (ps5) {
+        const apiReady = ps5 && ps5.ready === true
+            && typeof global.syscall === "function"
+            && typeof global.SYSCALL === "object";
+        setPayloadControlsEnabled(apiReady);
         pnl.style.display = "block";
+        if (!apiReady) {
+            pnl.querySelector("#pmode").textContent = "bridge API incomplete";
+            glog("!! bridge callback lacked syscall globals; payload launch remains disabled");
+            return;
+        }
         pnl.querySelector("#pmode").textContent =
             "fw " + ps5.fw + " · mode " + ps5.mode +
             (ps5.mode === "ROP" ? (ps5.stubMode ? " (X1NON stubs)" : "") : " (! syscall no-op)");
