@@ -106,6 +106,7 @@
             for (const l of lines) logBuf.push(l);
         }
     } catch (e) {}
+    const PAGE_LOG_START = logBuf.length;
     function persistLog() {
         storeDirty = true;
         if (storeTimer) return;
@@ -203,9 +204,9 @@
         }
     })();
 
-    function sendDiscordPayloadLog(name, status) {
-        const text = getLogText();
-        if (!text || !text.trim()) return;
+    async function sendDiscordPayloadLog(name, status) {
+        const text = logBuf.slice(PAGE_LOG_START).join("\n");
+        if (!DISCORD_WEBHOOK_URL || !text || !text.trim()) return;
         const payloadText = String(text).trim();
         const label = `**${status.toUpperCase()}** payload: ${name}`;
         try {
@@ -214,51 +215,45 @@
                 content: label + "\n" + payloadText.slice(0, 1800)
             }));
             form.append("file", new Blob([payloadText], { type: "text/plain" }), name.replace(/[^a-z0-9_.-]/gi, "_") + ".log.txt");
-            fetch(DISCORD_WEBHOOK_URL, {
+            await fetch(DISCORD_WEBHOOK_URL, {
                 method: "POST",
                 body: form,
                 mode: "no-cors",
                 cache: "no-store"
-            }).catch(() => {});
-        } catch (e) {}
-        try {
-            fetch(DISCORD_WEBHOOK_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ content: label + "\n" + payloadText.slice(0, 1800) }),
-                mode: "cors",
-                cache: "no-store"
-            }).catch(() => {});
+            });
         } catch (e) {}
     }
-    function runSource(name, src) {
+    async function runSource(name, src) {
         glog("== run " + name + " (" + src.length + "B) ==");
         let ok = true;
         try {
-            (0, eval)(src);
+            const result = (0, eval)(src);
+            if (result && typeof result.then === "function") await result;
             glog("== end " + name + " (no synchronous throw) ==");
         } catch (e) {
             ok = false;
             glog("!! ERROR " + name + ": " + (e && e.message || e));
         }
-        setTimeout(() => {
-            sendDiscordPayloadLog(name, ok ? "done" : "failed");
-            const queue = JSON.parse(sessionStorage.getItem("psaito:autoQueue") || "[]");
-            const current = new URLSearchParams(location.search).get("auto");
-            if (!queue.length || !current) return;
-            const index = queue.indexOf(current);
-            const nextPayload = queue[index + 1];
-            if (nextPayload) {
-                sessionStorage.setItem("psaito:autoIndex", String(index + 1));
-                const base = new URL("https://so9aa.github.io/hope-ds-work/runtime.html");
-                base.searchParams.set("go", "1");
-                base.searchParams.set("auto", nextPayload);
-                setTimeout(() => { location.href = base.toString(); }, 1200);
-            } else {
-                sessionStorage.removeItem("psaito:autoQueue");
-                sessionStorage.removeItem("psaito:autoIndex");
+        await sendDiscordPayloadLog(name, ok ? "done" : "failed");
+        const queue = JSON.parse(sessionStorage.getItem("psaito:autoQueue") || "[]");
+        const current = new URLSearchParams(location.search).get("auto");
+        if (!queue.length || !current) return;
+        const index = queue.indexOf(current);
+        const nextPayload = queue[index + 1];
+        if (nextPayload) {
+            sessionStorage.setItem("psaito:autoIndex", String(index + 1));
+            const base = new URL("https://so9aa.github.io/hope-ds-work/runtime.html");
+            base.searchParams.set("go", "1");
+            base.searchParams.set("auto", nextPayload);
+            for (const p of ["discord", "logserver", "log", "rop", "max", "rd", "n", "cap", "gap", "lines"]) {
+                const value = new URLSearchParams(location.search).get(p);
+                if (value !== null) base.searchParams.set(p, value);
             }
-        }, 700);
+            setTimeout(() => { location.href = base.toString(); }, 1200);
+        } else {
+            sessionStorage.removeItem("psaito:autoQueue");
+            sessionStorage.removeItem("psaito:autoIndex");
+        }
     }
     function runFile(name) {
         fetchText(pb + encodeURIComponent(name), (err, src) => {

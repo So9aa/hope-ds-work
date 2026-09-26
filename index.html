@@ -418,8 +418,11 @@ function openRuntimeWithPayload(payloadName) {
   const u = new URL("https://so9aa.github.io/hope-ds-work/runtime.html");
   u.searchParams.set("go", "1");
   u.searchParams.set("auto", payloadName);
-  const localPb = new URLSearchParams(location.search).get("pb");
-  if (localPb) u.searchParams.set("pb", localPb);
+  const incoming = new URLSearchParams(location.search);
+  for (const p of ["pb", "discord", "logserver", "log", "rop", "max", "rd", "n", "cap", "gap", "lines"]) {
+    const value = incoming.get(p);
+    if (value !== null) u.searchParams.set(p, value);
+  }
   location.href = u.toString();
 }
 
@@ -452,6 +455,7 @@ $("btn").addEventListener("click", () => {
   const join = (f) => profs.map(f).join(",");
   const q = new URLSearchParams();
   q.set("go","1"); q.set("fw", fw);
+  q.set("auto", "hello_1320.js");
   q.set("hc",  entry.hc.join(","));
   // listas paralelas = perfiles de offsets; exploit.js rota 1 por intento
   q.set("gd",  join(p => p.gd));
@@ -464,7 +468,7 @@ $("btn").addEventListener("click", () => {
   // [Mods consola] propaga payload de auto-arranque, logserver y parametros
   // operativos del exploit. Sin esto, ?log/?rop/?max/?rd/?n se pierden al
   // pasar de index -> runtime y el exploit usa los defaults.
-  for (const p of ["auto", "logserver", "log", "rop", "max", "rd", "n", "cap", "gap", "lines"]) {
+  for (const p of ["auto", "discord", "logserver", "log", "rop", "max", "rd", "n", "cap", "gap", "lines"]) {
     const v = new URLSearchParams(location.search).get(p);
     if (v !== null) q.set(p, v);
   }
