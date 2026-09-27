@@ -125,6 +125,9 @@
         if (logBuf.length > LOG_CAP) logBuf.splice(0, logBuf.length - LOG_CAP);
         persistLog();
     }
+    const PAGE_RUN_ID = Date.now().toString(36);
+    logAll(`[page] run=${PAGE_RUN_ID} started=${new Date().toISOString()}`
+        + ` build=${QP.get("build") || "unversioned"}`);
 
     // El exploit escribe su propio log en #scr (screenLine), NO via log() del
     // bridge. Sin capturarlo, el boton de descarga perderia justo el log de
@@ -248,7 +251,9 @@
     async function sendFullLogToDiscord() {
         const button = pnl.querySelector("#pdiscord");
         captureScr();
-        const text = getLogText();
+        // Manual upload is for this page/run only; persisted older logs remain
+        // available through DOWNLOAD LOG, but must not masquerade as a new test.
+        const text = logBuf.slice(PAGE_LOG_START).join("\n");
         if (!text || !text.trim()) {
             glog("!! no log content to send");
             return;

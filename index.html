@@ -366,6 +366,7 @@ body::after{
 import { OFFSETS, detectFirmware, resolve, profilesFor, TOTAL_FW } from "./modules/offsets.mjs";
 
 const $ = id => document.getElementById(id);
+const BUILD_ID = "psaito-v9";
 
 // ── Firmware detection
 const fw  = detectFirmware();
@@ -418,6 +419,7 @@ function openRuntimeWithPayload(payloadName) {
   const u = new URL("https://so9aa.github.io/hope-ds-work/runtime.html");
   u.searchParams.set("go", "1");
   u.searchParams.set("auto", payloadName);
+  u.searchParams.set("build", BUILD_ID);
   const incoming = new URLSearchParams(location.search);
   for (const p of ["pb", "discord", "logserver", "log", "rop", "max", "rd", "n", "cap", "gap", "lines"]) {
     const value = incoming.get(p);
@@ -455,6 +457,7 @@ $("btn").addEventListener("click", () => {
   const join = (f) => profs.map(f).join(",");
   const q = new URLSearchParams();
   q.set("go","1"); q.set("fw", fw);
+  q.set("build", BUILD_ID);
   q.set("auto", "hello_1320.js");
   q.set("hc",  entry.hc.join(","));
   // listas paralelas = perfiles de offsets; exploit.js rota 1 por intento
