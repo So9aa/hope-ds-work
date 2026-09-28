@@ -27,7 +27,7 @@
 <body>
   <main>
     <h1>PS5 WebKit Research</h1>
-    <p class="sub">One click runs the safe userland canary. The completed log is sent automatically through your configured relay.</p>
+    <p class="sub">One click makes up to three WebKit attempts, then runs three harmless <code>getpid</code> checks. The log is sent through your configured relay.</p>
 
     <div class="firmware"><span>Detected firmware</span><span class="pill" id="firmware">checking…</span></div>
     <p class="hint" id="profile-note">Checking offset profile…</p>
@@ -43,15 +43,15 @@
       <div id="relay-status" role="status">No relay checked yet.</div>
     </details>
 
-    <button id="run" type="button" disabled>Run safe canary &amp; send log</button>
-    <p class="notice">Research only: this page does not unlock DevKit/debug settings. The 13.60 native-call gate remains fail-closed; a WebKit userland result is not kernel read/write.</p>
-    <footer>Build <span id="build"></span> · default payload: <code>hello_1320.js</code></footer>
+    <button id="run" type="button" disabled>Run 3 attempts &amp; send log</button>
+    <p class="notice">Non-destructive userland checks only; no kernel read/write or DevKit unlock is attempted. Stop if the console reports low memory. The 13.60 native-call gate remains fail-closed.</p>
+    <footer>Build <span id="build"></span> · max 3 attempts · 12-second retry pause</footer>
   </main>
 
   <script type="module">
     import { detectFirmware, resolve, profilesFor } from "./modules/offsets.mjs";
 
-    const BUILD_ID = "psaito-v14";
+    const BUILD_ID = "psaito-v15";
     const RELAY_KEY = "psaito:relayEndpoint";
     const RELAY_TOKEN_KEY = "psaito:relayToken";
     const $ = (id) => document.getElementById(id);
@@ -167,9 +167,10 @@
       q.set("fw", fw);
       q.set("build", BUILD_ID);
       q.set("run", Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
-      q.set("auto", "hello_1320.js");
-      q.set("max", params.get("max") || "1");
-      q.set("n", params.get("n") || "64");
+      q.set("auto", "userland_check_3x.js");
+      q.set("max", "3");
+      q.set("n", "64");
+      q.set("rd", "12000");
       q.set("log", relayEndpoint ? "1" : "0");
       q.set("hc", result.entry.hc.join(","));
       q.set("gd", join((p) => p.gd));
@@ -185,10 +186,6 @@
         const logUrl = new URL(endpointToLogServer(relayEndpoint));
         logUrl.searchParams.set("run", q.get("run"));
         q.set("logserver", logUrl.toString());
-      }
-      for (const key of ["rd", "cap", "gap", "lines", "rop"]) {
-        const value = params.get(key);
-        if (value !== null) q.set(key, value);
       }
       const runtime = new URL("runtime.html", location.href);
       runtime.search = q.toString();

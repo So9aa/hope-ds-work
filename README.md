@@ -14,7 +14,8 @@ After the demonstration completes, PSAITO provides a small JavaScript
 runtime API (`malloc`, `read/write`, `syscall`, notifications) plus an
 on-screen payload panel, so analysis routines (`.js` probes) can be loaded
 and executed directly from GitHub — no PC, cables or extra tooling needed.
-The simple launcher defaults to `hello_1320.js`, a harmless loader canary.
+The simple launcher defaults to `userland_check_3x.js`, a harmless three-call
+`getpid` diagnostic.
 Other research probes are available in the payload panel; destructive probes
 such as `bagagwa_uaf_1320.js` must be selected explicitly.
 
@@ -25,32 +26,20 @@ such as `bagagwa_uaf_1320.js` must be selected explicitly.
    - Secondary DNS: `0.0.0.0`
 2. Open the PS5 web browser (guide entry point).
 3. Visit the toolkit URL: **<https://so9aa.github.io/hope-ds-work/>**
-4. Press **Run safe canary & send log** — the runtime starts the canary only
-   after the bridge is ready. A configured relay uploads the finished log.
+4. Press **Run 3 attempts & send log** — the runtime makes up to three WebKit
+   attempts with a 12-second pause. If the bridge comes up, it runs three safe
+   `getpid` checks. A configured relay uploads the log.
 
-> **Warning**: destructive payloads are opt-in only. The default safe probe is
-> `hello_1320.js`; `bagagwa_uaf_1320.js` **fires a kernel UAF** and can
-> hang/panic the console. For a first, non-destructive check use
-> `?auto=hello_1320.js` or `?auto=aio_reach_1320.js`.
+> **Warning**: the launcher runs only the non-destructive
+> `userland_check_3x.js` diagnostic. It does not test kernel memory or unlock
+> DevKit/debug settings. Other payloads in the panel are separate research
+> experiments; in particular `bagagwa_uaf_1320.js` can hang or panic the console
+> and must not be selected as part of a routine smoke test.
 
-Optional URL params (all of them propagate from `index.html` to `runtime.html`):
-append them to <https://so9aa.github.io/hope-ds-work/>, e.g.
-`https://so9aa.github.io/hope-ds-work/?max=1&n=64&auto=hello_1320.js`.
-- `?auto=<file.js>` — auto-run routine (`auto=0` disables; default safe
-  payload is `hello_1320.js`; destructive payloads require explicit opt-in)
-- `?pb=<base>` — payload base URL (default same-origin `payloads/`)
-- `?logserver=<url>` — remote log endpoint (see **Console log** below)
-- `?rop=0` — force bridge **DIRECT** mode (skip libkernel .text gadget scan)
-- `?log=0` / `?log=1` — force disable/enable remote log
-- `?max=<n>` — attempt ceiling (**default 1**; `0` = endless). The exploit
-  retries on failure; each attempt reallocates ~100-200 MB, so repeated retries
-  saturates WebKit's process memory and the system shows a repeated
-  "not enough memory" dialog that hides the on-screen log. Keep the default
-  (or lower) while testing.
-- `?rd=<ms>` — delay between attempts (default 3000 ms)
-- `?n=<count>` — drain allocations per attempt (default 128, min 64)
-- `?cap=<ms>` / `?gap=<ms>` — capture/compose delays (default 50 ms + gap)
-- `?lines=<n>` — `#scr` history kept on screen (default 200)
+The launcher fixes the run to **at most three attempts**, a 12-second retry
+pause, and `n=64`; query-string overrides do not change those settings. Stop the
+test if the console reports low memory. Payload-specific controls remain in the
+runtime panel for separate, deliberate experiments.
 
 ### On-console log & USB
 
@@ -139,7 +128,7 @@ python3 dual_host.py
 
 Point your HTTPS tunnel at port `8080`. In the launcher, open **Log relay setup**,
 enter the tunnel's `/log` URL and the printed relay token, then save. After that,
-**Run safe canary & send log** launches `hello_1320.js`; the complete run log is
+**Run 3 attempts & send log** launches `userland_check_3x.js`; the complete run log is
 sent when the payload finishes. A no-bridge timeout also attempts to send the
 partial log. The **SEND TO DISCORD** panel button remains available for manual
 resends. Do not place the webhook URL or relay token in a shareable query string.
@@ -151,13 +140,14 @@ deleting the current source line does not invalidate a credential from history.
 ### 2. First run: validate the exploit before payloads
 
 Open <https://so9aa.github.io/hope-ds-work/>, configure the relay once if
-needed, then press **Run safe canary & send log**. That launches
-`hello_1320.js` only after the bridge is ready.
+needed, then press **Run 3 attempts & send log**. That launches
+`userland_check_3x.js` only after the bridge is ready.
 
 Expected: `runtime.html` shows `*** SUCCESS ***`, the panel appears with
 `fw 13.xx · mode ROP` (or `ROP (X1NON stubs)` / `DIRECT`), and the PC log
-receives `BRIDGE-BOOT fw=13.xx ...`. `hello_1320.js` then logs
-`getpid ok = 0x...`.
+receives `BRIDGE-BOOT fw=13.xx ...`. `userland_check_3x.js` then reports three
+successful `getpid` checks. This confirms only the userland syscall path; it
+does not demonstrate kernel R/W or DevKit unlock capability.
 
 ### 3. Second run: the real payload
 
@@ -283,7 +273,7 @@ sent regardless.)
   whether the sandbox still reaches the AIO syscalls — the payload verdicts
   answer both. A single attempt may restart the browser tab — that is expected
   during testing.
-- The site uses a service worker (`psaito-v3`). After a repo update, give
+- The site uses a service worker (`psaito-v15`). After a repo update, give
   Pages 1-2 minutes and reload; the SW self-updates on navigation. Payloads
   and logs are never cached.
 - The Y2JB/exploit startup is flaky: if `SOMETHING WENT WRONG` or a hang

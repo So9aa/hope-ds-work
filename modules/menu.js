@@ -9,15 +9,16 @@
     let pb = QP.get("pb") || "payloads/";
     if (!pb.endsWith("/")) pb += "/";
 
-    // Use the harmless hello canary by default after the exploit.
+    // Use the three-call, non-destructive userland smoke check by default.
     // BAGAGWA must be launched explicitly from the payload panel or via ?auto=bagagwa_uaf_1320.js.
     // ?auto=<archivo.js> lo cambia; ?auto=0 lo desactiva.
-    const DEF_PAYLOAD = "hello_1320.js";
+    const DEF_PAYLOAD = "userland_check_3x.js";
     let auto = QP.get("auto");
     if (auto === null) auto = DEF_PAYLOAD;
     let autoTimer = 0;
 
     const KNOWN = [
+        "userland_check_3x.js",
         "hello_1320.js",
         "aio_reach_1320.js",
         "bagagwa_uaf_1320.js",
