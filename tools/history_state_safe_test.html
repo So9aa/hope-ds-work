@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Safe WebKit History-State Test</title>
+  <style>
+    :root { color-scheme: dark; font: 16px system-ui, sans-serif; }
+    body { max-width: 760px; margin: 2rem auto; padding: 0 1rem; background: #111827; color: #e5e7eb; }
+    h1 { font-size: 1.35rem; }
+    p { line-height: 1.5; }
+    button { padding: .65rem 1rem; font: inherit; }
+    pre { min-height: 12rem; padding: 1rem; overflow-wrap: anywhere; white-space: pre-wrap; background: #030712; border: 1px solid #374151; }
+    .note { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <h1>Safe WebKit history-state test</h1>
+  <p>This page tests small, ordinary structured values with <code>history.pushState</code>, immediate <code>history.state</code> reads, and same-page Back/Forward traversal.</p>
+  <p class="note">Run it separately from any exploit page. It does not allocate large buffers, use malformed state, or perform memory access.</p>
+  <button id="run" type="button">Run safe tests</button>
+  <button id="send" type="button" disabled>Send log to Discord</button>
+  <pre id="output" aria-live="polite">Ready. No test runs automatically.</pre>
+  <script>
+    "use strict";
+
+    const output = document.getElementById("output");
+    const button = document.getElementById("run");
+    const sendButton = document.getElementById("send");
+    const webhookUrl = "https://discord.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
+    const logLines = [];
+    let activeTraversal = null;
+
+    function line(message) {
+      logLines.push(message);
+      output.textContent += message + "\n";
+    }
+
+    async function sendLog() {
+      if (!logLines.length || sendButton.disabled) return;
+      sendButton.disabled = true;
+      const form = new FormData();
+      form.append("payload_json", JSON.stringify({
+        content: "Safe WebKit history-state test log",
+        allowed_mentions: { parse: [] }
+      }));
+      const filename = "history-state-test-" + new Date().toISOString().replace(/[:.]/g, "-") + ".txt";
+      form.append("files[0]", new Blob([logLines.join("\n") + "\n"], { type: "text/plain;charset=utf-8" }), filename);
+      try {
+        await fetch(webhookUrl + "?wait=true", {
+          method: "POST",
+          body: form,
+          mode: "no-cors",
+          credentials: "omit",
+          referrerPolicy: "no-referrer"
+        });
+        line("Discord upload request submitted. Check the webhook channel; this browser cannot read Discord's cross-origin receipt.");
+      } catch (error) {
+        line("Discord upload request failed: " + String(error && error.message || error));
+      } finally {
+        sendButton.disabled = false;
+      }
+    }
+
+    function stopActive(message) {
+      const job = activeTraversal;
+      if (!job) return;
+      activeTraversal = null;
+      clearTimeout(job.timeout);
+      line(message);
+      job.resolve(false);
+    }
+
+    window.addEventListener("popstate", (event) => {
+      const job = activeTraversal;
+      if (!job) return;
+
+      const state = event.state;
+      if (state && state.testRun === job.token && state.phase === "baseline") {
+        if (!job.forwardRequested) {
+          job.forwardRequested = true;
+          setTimeout(() => history.forward(), 0);
+        }
+        return;
+      }
+
+      if (state && state.testRun === job.token && state.phase === "sample") {
+        try {
+          const passed = job.verify(state.value);
+          activeTraversal = null;
+          clearTimeout(job.timeout);
+          line(`${passed ? "PASS" : "FAIL"} ${job.name}: restored value verified after Back/Forward`);
+          job.resolve(passed);
+        } catch (error) {
+          stopActive(`FAIL ${job.name}: verification threw ${String(error && error.message || error)}`);
+        }
+        return;
+      }
+
+      stopActive(`FAIL ${job.name}: traversal returned unexpected history state`);
+    });
+
+    function testAfterTraversal(name, value, verify) {
+      return new Promise((resolve) => {
+        const token = "safe-history-test-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+        const job = {
+          token,
+          name,
+          verify,
+          resolve,
+          forwardRequested: false,
+          timeout: 0
+        };
+        activeTraversal = job;
+        job.timeout = setTimeout(() => {
+          stopActive(`FAIL ${name}: no matching popstate event within 5 seconds; stopping further traversal tests`);
+        }, 5000);
+
+        try {
+          history.pushState({ testRun: token, phase: "baseline" }, "", location.href);
+          history.pushState({ testRun: token, phase: "sample", value }, "", location.href);
+          const immediate = history.state;
+          if (!immediate || immediate.testRun !== token || immediate.phase !== "sample" || !verify(immediate.value)) {
+            stopActive(`FAIL ${name}: immediate history.state read did not match`);
+            return;
+          }
+          line(`PASS ${name}: pushState and immediate state read`);
+          setTimeout(() => history.back(), 0);
+        } catch (error) {
+          stopActive(`FAIL ${name}: pushState threw ${String(error && error.name || "Error")}: ${String(error && error.message || error)}`);
+        }
+      });
+    }
+
+    async function runTests() {
+      button.disabled = true;
+      sendButton.disabled = true;
+      logLines.length = 0;
+      output.textContent = "";
+      line("Started: " + new Date().toISOString());
+      line("User agent: " + navigator.userAgent);
+      line("Only this test report is sent to the configured public Discord webhook.");
+      line("Each test uses a few small values and same-document history entries.");
+
+      const cases = [
+        {
+          name: "primitive string",
+          value: "safe history-state sample",
+          verify: (v) => v === "safe history-state sample"
+        },
+        {
+          name: "nested plain object",
+          value: { label: "sample", count: 3, items: ["a", 7, false], child: { ok: true } },
+          verify: (v) => !!v && v.label === "sample" && v.count === 3
+            && Array.isArray(v.items) && v.items.length === 3
+            && v.items[0] === "a" && v.items[1] === 7 && v.items[2] === false
+            && !!v.child && v.child.ok === true
+        },
+        {
+          name: "Date",
+          value: new Date("2024-01-02T03:04:05.000Z"),
+          verify: (v) => v instanceof Date && v.toISOString() === "2024-01-02T03:04:05.000Z"
+        },
+        {
+          name: "small typed array",
+          value: new Uint8Array([0, 1, 127, 255]),
+          verify: (v) => v instanceof Uint8Array && v.length === 4
+            && v[0] === 0 && v[1] === 1 && v[2] === 127 && v[3] === 255
+        }
+      ];
+
+      let passed = 0;
+      for (const sample of cases) {
+        const ok = await testAfterTraversal(sample.name, sample.value, sample.verify);
+        if (!ok) break;
+        passed++;
+      }
+      const total = cases.length;
+      line("");
+      line(`RESULT: ${passed}/${total} traversal tests passed.`);
+      line("This checks browser history serialization/restoration only; it says nothing about exploitability or kernel access.");
+      button.disabled = false;
+      sendButton.disabled = false;
+      await sendLog();
+    }
+
+    button.addEventListener("click", runTests);
+    sendButton.addEventListener("click", sendLog);
+  </script>
+</body>
+</html>
