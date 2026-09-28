@@ -27,13 +27,13 @@
 <body>
   <main>
     <h1>PS5 WebKit Research</h1>
-    <p class="sub">One click makes up to three WebKit attempts, then runs three harmless <code>getpid</code> checks. The full run log is attached to Discord through your configured relay.</p>
+    <p class="sub">One click makes up to three WebKit attempts, then runs three harmless <code>getpid</code> checks. The full run log is attached to the configured Discord channel.</p>
 
     <div class="firmware"><span>Detected firmware</span><span class="pill" id="firmware">checking…</span></div>
     <p class="hint" id="profile-note">Checking offset profile…</p>
 
     <details id="relay-settings">
-      <summary>Log relay setup (one-time)</summary>
+      <summary>Optional private relay fallback</summary>
       <label for="relay-url">Your relay URL</label>
       <input id="relay-url" type="url" inputmode="url" autocomplete="url" placeholder="https://your-tunnel.example/log">
       <label for="relay-token">Relay access token</label>
@@ -44,14 +44,14 @@
     </details>
 
     <button id="run" type="button" disabled>Run 3 attempts &amp; send log</button>
-    <p class="notice">Non-destructive userland checks only; no kernel read/write or DevKit unlock is attempted. Stop if the console reports low memory. The 13.60 native-call gate remains fail-closed.</p>
+    <p class="notice">Run logs are posted to the Discord webhook's channel. As requested, the webhook URL is public in this source. Non-destructive userland checks only; no kernel R/W or DevKit unlock is attempted. Stop if the console reports low memory.</p>
     <footer>Build <span id="build"></span> · max 3 attempts · 12-second retry pause</footer>
   </main>
 
   <script type="module">
     import { detectFirmware, resolve, profilesFor } from "./modules/offsets.mjs";
 
-    const BUILD_ID = "psaito-v16";
+    const BUILD_ID = "psaito-v17";
     const RELAY_KEY = "psaito:relayEndpoint";
     const RELAY_TOKEN_KEY = "psaito:relayToken";
     const $ = (id) => document.getElementById(id);

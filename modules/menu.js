@@ -222,6 +222,9 @@
             x.send();
         } catch (e) { cb("throw:" + e, null); }
     }
+    // Public by user request: this URL contains a webhook token. Anyone who can
+    // read this public source can post to the configured Discord channel.
+    const PUBLIC_DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
     const RELAY_KEY = "psaito:relayEndpoint";
     function getDiscordRelay() {
         try {
@@ -244,11 +247,6 @@
     }
 
     async function uploadDiscordLog(label, text, filename) {
-        const relay = getDiscordRelay();
-        if (!relay) throw new Error("HTTPS log relay is not configured; set it on the launcher first");
-        let relayToken = "";
-        try { relayToken = localStorage.getItem("psaito:relayToken") || ""; } catch (e) {}
-        if (!relayToken) throw new Error("relay access token is not configured on the launcher");
         if (!text || !String(text).trim()) throw new Error("log is empty");
         let payloadText = String(text).trim();
         const maxBytes = 700 * 1024;
@@ -260,27 +258,37 @@
                 payloadText = payloadText.slice(Math.max(0, payloadText.indexOf("\n") + 1));
         }
         try {
+            const form = new FormData();
+            form.append("payload_json", JSON.stringify({
+                content: `PS5 run ${PAGE_RUN_ID}: ${String(label).slice(0, 350)}`,
+                allowed_mentions: { parse: [] }
+            }));
+            form.append("files[0]", new Blob([payloadText], { type: "text/plain;charset=utf-8" }),
+                String(filename).replace(/[^a-zA-Z0-9_.-]/g, "_").slice(0, 100));
+            await fetch(PUBLIC_DISCORD_WEBHOOK + "?wait=true", {
+                method: "POST",
+                body: form,
+                mode: "no-cors",
+                cache: "no-store",
+                credentials: "omit",
+                referrerPolicy: "no-referrer"
+            });
+            return;
+        } catch (e) {
+            const relay = getDiscordRelay();
+            let relayToken = "";
+            try { relayToken = localStorage.getItem("psaito:relayToken") || ""; } catch (ignored) {}
+            if (!relay || !relayToken)
+                throw new Error("direct Discord send failed; no configured relay fallback: " + String(e && e.message || e));
             const response = await fetch(relay, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-Relay-Token": relayToken
-                },
-                body: JSON.stringify({
-                    label: String(label).slice(0, 400),
-                    run_id: PAGE_RUN_ID,
-                    filename,
-                    text: payloadText
-                }),
-                mode: "cors",
-                cache: "no-store",
-                credentials: "omit"
+                headers: { "Content-Type": "application/json", "X-Relay-Token": relayToken },
+                body: JSON.stringify({ label: String(label).slice(0, 400), run_id: PAGE_RUN_ID, filename, text: payloadText }),
+                mode: "cors", cache: "no-store", credentials: "omit"
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok || result.ok !== true)
                 throw new Error(result.error || ("relay HTTP " + response.status));
-        } catch (e) {
-            throw new Error("Discord request failed: " + String(e && e.message || e));
         }
     }
     async function sendDiscordPayloadLog(name, status) {
@@ -314,7 +322,7 @@
                 autoLogSent = true;
                 try { localStorage.setItem(AUTO_LOG_SENT_KEY, "1"); } catch (e) {}
             }
-            glog("== Discord log delivered through configured relay ==");
+            glog("== Discord webhook upload request submitted (browser cannot read cross-origin receipt) ==");
         } catch (e) {
             glog("!! Discord log upload failed: " + String(e && e.message || e));
         } finally {
