@@ -109,7 +109,6 @@
             for (const l of lines) logBuf.push(l);
         }
     } catch (e) {}
-    const PAGE_LOG_START = logBuf.length;
     function persistLog() {
         storeDirty = true;
         if (storeTimer) return;
@@ -117,16 +116,31 @@
             storeTimer = 0;
             if (!storeDirty) return;
             storeDirty = false;
-            try { localStorage.setItem(STORE_KEY, logBuf.join("\n")); } catch (e) {}
+            try {
+                localStorage.setItem(STORE_KEY, logBuf.join("\n"));
+                localStorage.setItem(RUN_STORE_KEY, runLogBuf.join("\n"));
+            } catch (e) {}
         }, 500);
     }
     function logAll(s) {
         s = String(s);
         logBuf.push(s);
+        runLogBuf.push(s);
         if (logBuf.length > LOG_CAP) logBuf.splice(0, logBuf.length - LOG_CAP);
+        if (runLogBuf.length > LOG_CAP) runLogBuf.splice(0, runLogBuf.length - LOG_CAP);
         persistLog();
     }
     const PAGE_RUN_ID = QP.get("run") || Date.now().toString(36);
+    const RUN_STORE_KEY = "psaito:runLog:" + PAGE_RUN_ID;
+    const runLogBuf = [];
+    try {
+        const savedRun = localStorage.getItem(RUN_STORE_KEY);
+        if (savedRun) runLogBuf.push(...savedRun.split("\n"));
+    } catch (e) {}
+    const AUTO_LOG_SENT_KEY = "psaito:autoLogSent:" + PAGE_RUN_ID;
+    let autoLogSent = false;
+    let autoLogSending = false;
+    try { autoLogSent = localStorage.getItem(AUTO_LOG_SENT_KEY) === "1"; } catch (e) {}
     logAll(`[page] run=${PAGE_RUN_ID} started=${new Date().toISOString()}`
         + ` build=${QP.get("build") || "unversioned"}`);
 
@@ -270,7 +284,7 @@
         }
     }
     async function sendDiscordPayloadLog(name, status) {
-        const text = logBuf.slice(PAGE_LOG_START).join("\n");
+        const text = runLogBuf.join("\n");
         if (!text || !text.trim()) return;
         const filename = name.replace(/[^a-z0-9_.-]/gi, "_") + ".log.txt";
         try {
@@ -279,27 +293,39 @@
             glog("!! " + String(e && e.message || e));
         }
     }
-    async function sendFullLogToDiscord(label = "MANUAL PS5 run log") {
+    async function sendFullLogToDiscord(label = "MANUAL PS5 run log", automatic = false) {
+        if (automatic && (autoLogSent || autoLogSending)) return;
+        if (automatic) autoLogSending = true;
         const button = pnl.querySelector("#pdiscord");
         captureScr();
         // Manual upload is for this page/run only; persisted older logs remain
         // available through DOWNLOAD LOG, but must not masquerade as a new test.
-        const text = logBuf.slice(PAGE_LOG_START).join("\n");
+        const text = runLogBuf.join("\n");
         if (!text || !text.trim()) {
             glog("!! no log content to send");
+            if (automatic) autoLogSending = false;
             return;
         }
         button.disabled = true;
         try {
             const stamp = new Date().toISOString().replace(/[:.]/g, "-");
             await uploadDiscordLog("**" + label + "**", text, `ps5-run-${stamp}.log.txt`);
+            if (automatic) {
+                autoLogSent = true;
+                try { localStorage.setItem(AUTO_LOG_SENT_KEY, "1"); } catch (e) {}
+            }
             glog("== Discord log delivered through configured relay ==");
         } catch (e) {
             glog("!! Discord log upload failed: " + String(e && e.message || e));
         } finally {
             button.disabled = false;
+            if (automatic) autoLogSending = false;
         }
     }
+    global.__psaitoRunComplete = function (detail) {
+        const attempt = detail && detail.attempt ? detail.attempt : "final";
+        sendFullLogToDiscord(`Exploit stopped after ${attempt} attempts`, true);
+    };
     async function runSource(name, src) {
         if (!bridgeApiReady()) {
             glog("!! blocked payload launch: bridge API is not ready");
@@ -320,7 +346,14 @@
             ok = false;
             glog("!! ERROR " + name + ": " + (e && e.message || e));
         }
-        await sendDiscordPayloadLog(name, ok ? "done" : "failed");
+        if (name === "userland_check_3x.js") {
+            await sendFullLogToDiscord(
+                ok ? "Three safe userland checks completed" : "Three safe userland checks failed",
+                true
+            );
+        } else {
+            await sendDiscordPayloadLog(name, ok ? "done" : "failed");
+        }
         const queue = JSON.parse(sessionStorage.getItem("psaito:autoQueue") || "[]");
         const current = new URLSearchParams(location.search).get("auto");
         if (!queue.length || !current) return;
@@ -489,7 +522,7 @@
             glog("!! bridge did not arrive within 60s. The WebKit exploit did not reach SUCCESS.");
             glog("   the exploit retries on its own; check #scr (exploit log) and the banner.");
             glog("   if it stays the same, close and reopen the app (Y2JB startup is flaky).");
-            sendFullLogToDiscord("No bridge after 60 seconds — partial run log");
+            glog("   automatic Discord upload will occur after the configured attempt ceiling.");
         }
     }, 60000);
 })(window);

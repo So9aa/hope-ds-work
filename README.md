@@ -114,7 +114,7 @@ notifications, but the XHR just 404s silently.
 
 #### One-click Discord delivery
 
-The launcher can upload the completed canary log through `dual_host.py`; the
+The launcher can upload the completed run log through `dual_host.py`; the
 Discord webhook URL remains on the host and is never embedded in HTML, JavaScript,
 or the runtime URL. The relay accepts one bounded text log per request and
 requires a separate bearer token.
@@ -128,10 +128,12 @@ python3 dual_host.py
 
 Point your HTTPS tunnel at port `8080`. In the launcher, open **Log relay setup**,
 enter the tunnel's `/log` URL and the printed relay token, then save. After that,
-**Run 3 attempts & send log** launches `userland_check_3x.js`; the complete run log is
-sent when the payload finishes. A no-bridge timeout also attempts to send the
-partial log. The **SEND TO DISCORD** panel button remains available for manual
-resends. Do not place the webhook URL or relay token in a shareable query string.
+**Run 3 attempts & send log** launches `userland_check_3x.js`; a successful safe
+diagnostic sends one complete log attachment, while three failed attempts send
+one attachment after the final attempt. The **SEND TO DISCORD** panel button
+remains available for manual resends. The attachment is visible to members of
+the configured Discord channel. Do not place the webhook URL or relay token in
+a shareable query string.
 
 The previously embedded Discord webhook was exposed in public source history.
 Remove it from any saved copies and **revoke/rotate that webhook in Discord**;
@@ -273,7 +275,7 @@ sent regardless.)
   whether the sandbox still reaches the AIO syscalls — the payload verdicts
   answer both. A single attempt may restart the browser tab — that is expected
   during testing.
-- The site uses a service worker (`psaito-v15`). After a repo update, give
+- The site uses a service worker (`psaito-v16`). After a repo update, give
   Pages 1-2 minutes and reload; the SW self-updates on navigation. Payloads
   and logs are never cached.
 - The Y2JB/exploit startup is flaky: if `SOMETHING WENT WRONG` or a hang

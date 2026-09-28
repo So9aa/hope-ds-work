@@ -27,7 +27,7 @@
 <body>
   <main>
     <h1>PS5 WebKit Research</h1>
-    <p class="sub">One click makes up to three WebKit attempts, then runs three harmless <code>getpid</code> checks. The log is sent through your configured relay.</p>
+    <p class="sub">One click makes up to three WebKit attempts, then runs three harmless <code>getpid</code> checks. The full run log is attached to Discord through your configured relay.</p>
 
     <div class="firmware"><span>Detected firmware</span><span class="pill" id="firmware">checking…</span></div>
     <p class="hint" id="profile-note">Checking offset profile…</p>
@@ -51,7 +51,7 @@
   <script type="module">
     import { detectFirmware, resolve, profilesFor } from "./modules/offsets.mjs";
 
-    const BUILD_ID = "psaito-v15";
+    const BUILD_ID = "psaito-v16";
     const RELAY_KEY = "psaito:relayEndpoint";
     const RELAY_TOKEN_KEY = "psaito:relayToken";
     const $ = (id) => document.getElementById(id);

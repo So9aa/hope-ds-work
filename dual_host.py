@@ -292,8 +292,8 @@ class Handler(SimpleHTTPRequestHandler):
                 label = str(request.get("label", "completed PS5 run"))[:400]
                 run_id = re.sub(r"[^A-Za-z0-9_-]", "", str(request.get("run_id", "unknown")))[:64]
                 filename = safe_filename(request.get("filename", f"ps5-run-{run_id}.log.txt"))
-                finalize_console_log(run_id)
                 send_discord_log(label, run_id or "unknown", text, filename)
+                finalize_console_log(run_id)
                 sys.stderr.write(f"[{ts()}] Discord log sent run={run_id or 'unknown'} bytes={len(encoded)}\n")
                 return self._json(200, {"ok": True})
             except HTTPError as exc:
