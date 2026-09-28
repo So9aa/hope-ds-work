@@ -1,4 +1,4 @@
-const V = "psaito-v13";
+const V = "psaito-v14";
 // rutas RELATIVAS al sw.js: funciona en root de dominio y en GitHub Pages
 // (/PSAITO/sw.js -> base /PSAITO/)
 const SHELL = [

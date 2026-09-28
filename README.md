@@ -14,9 +14,9 @@ After the demonstration completes, PSAITO provides a small JavaScript
 runtime API (`malloc`, `read/write`, `syscall`, notifications) plus an
 on-screen payload panel, so analysis routines (`.js` probes) can be loaded
 and executed directly from GitHub — no PC, cables or extra tooling needed.
-The default routine is `aio_reach_1320.js`, a non-UAF AIO reachability probe;
-`hello_1320.js` remains available as a loader canary. Destructive probes such
-as `bagagwa_uaf_1320.js` must be selected explicitly with `?auto=`.
+The simple launcher defaults to `hello_1320.js`, a harmless loader canary.
+Other research probes are available in the payload panel; destructive probes
+such as `bagagwa_uaf_1320.js` must be selected explicitly.
 
 ## Usage (PS5)
 
@@ -24,20 +24,20 @@ as `bagagwa_uaf_1320.js` must be selected explicitly with `?auto=`.
    - Primary DNS: `62.210.38.117`
    - Secondary DNS: `0.0.0.0`
 2. Open the PS5 web browser (guide entry point).
-3. Visit the toolkit URL: **<https://wamphyre.github.io/PSAITO/>**
-4. Press **Launch** — wait for the runtime panel; the default probe starts
-   automatically and prints its results.
+3. Visit the toolkit URL: **<https://so9aa.github.io/hope-ds-work/>**
+4. Press **Run safe canary & send log** — the runtime starts the canary only
+   after the bridge is ready. A configured relay uploads the finished log.
 
 > **Warning**: destructive payloads are opt-in only. The default safe probe is
-> `aio_reach_1320.js`; `bagagwa_uaf_1320.js` **fires a kernel UAF** and can
+> `hello_1320.js`; `bagagwa_uaf_1320.js` **fires a kernel UAF** and can
 > hang/panic the console. For a first, non-destructive check use
 > `?auto=hello_1320.js` or `?auto=aio_reach_1320.js`.
 
 Optional URL params (all of them propagate from `index.html` to `runtime.html`):
-append them to <https://wamphyre.github.io/PSAITO/>, e.g.
-`https://wamphyre.github.io/PSAITO/?max=3&rd=3000&auto=hello_1320.js`.
+append them to <https://so9aa.github.io/hope-ds-work/>, e.g.
+`https://so9aa.github.io/hope-ds-work/?max=1&n=64&auto=hello_1320.js`.
 - `?auto=<file.js>` — auto-run routine (`auto=0` disables; default safe
-  payload is `aio_reach_1320.js`; destructive payloads require explicit opt-in)
+  payload is `hello_1320.js`; destructive payloads require explicit opt-in)
 - `?pb=<base>` — payload base URL (default same-origin `payloads/`)
 - `?logserver=<url>` — remote log endpoint (see **Console log** below)
 - `?rop=0` — force bridge **DIRECT** mode (skip libkernel .text gadget scan)
@@ -98,8 +98,10 @@ itself (the PS5 loads it over the system browser).
 
 ### 1. Remote log (recommended; the on-screen log is lossy)
 
-The exploit and the bridge POST each log line to a `log_server.py` on your PC.
-Run it before launching (no dependencies, Python 3 stdlib only):
+The exploit and bridge can POST each log line to a server on your PC. For the
+combined static site + Discord relay, use `dual_host.py` as described below. If
+you only want local console output (no Discord), the log-only server is also
+available (Python 3 stdlib only):
 
 ```
 python3 DEMO/log_server.py      # listens on 0.0.0.0:8080, prints timestamped lines
@@ -121,14 +123,36 @@ The setting propagates from `index.html` to `runtime.html`, or can be set
 directly on the runtime URL. Without it, logs still go to screen (`#scr`) and
 notifications, but the XHR just 404s silently.
 
+#### One-click Discord delivery
+
+The launcher can upload the completed canary log through `dual_host.py`; the
+Discord webhook URL remains on the host and is never embedded in HTML, JavaScript,
+or the runtime URL. The relay accepts one bounded text log per request and
+requires a separate bearer token.
+
+```sh
+export DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/<id>/<token>'
+export PS5_RELAY_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+printf 'Relay token (enter once in the launcher): %s\n' "$PS5_RELAY_TOKEN"
+python3 dual_host.py
+```
+
+Point your HTTPS tunnel at port `8080`. In the launcher, open **Log relay setup**,
+enter the tunnel's `/log` URL and the printed relay token, then save. After that,
+**Run safe canary & send log** launches `hello_1320.js`; the complete run log is
+sent when the payload finishes. A no-bridge timeout also attempts to send the
+partial log. The **SEND TO DISCORD** panel button remains available for manual
+resends. Do not place the webhook URL or relay token in a shareable query string.
+
+The previously embedded Discord webhook was exposed in public source history.
+Remove it from any saved copies and **revoke/rotate that webhook in Discord**;
+deleting the current source line does not invalidate a credential from history.
+
 ### 2. First run: validate the exploit before payloads
 
-Launch with the canary as the auto-run to confirm the WebKit exploit completes
-and the bridge boots:
-
-```
-https://wamphyre.github.io/PSAITO/?log=1&logserver=http://<PC-IP>:8080/log&auto=hello_1320.js&max=3&rd=3000
-```
+Open <https://so9aa.github.io/hope-ds-work/>, configure the relay once if
+needed, then press **Run safe canary & send log**. That launches
+`hello_1320.js` only after the bridge is ready.
 
 Expected: `runtime.html` shows `*** SUCCESS ***`, the panel appears with
 `fw 13.xx · mode ROP` (or `ROP (X1NON stubs)` / `DIRECT`), and the PC log
@@ -148,7 +172,7 @@ Once the canary passes, you can explicitly opt in to the BAGAGWA
 A lighter alternative to first confirm AIO reachability is `aio_reach_1320.js`:
 
 ```
-https://wamphyre.github.io/PSAITO/?log=1&logserver=http://<PC-IP>:8080/log&max=3&rd=3000&auto=aio_reach_1320.js
+https://so9aa.github.io/hope-ds-work/?log=1&logserver=https://<your-tunnel-host>/log&max=3&rd=3000&auto=aio_reach_1320.js
 ```
 
 `aio_reach` prints `PASO` lines and a final `VEREDICTO: AIO VIVA` /
@@ -182,7 +206,7 @@ exists and aborts cleanly otherwise.
 attempt and read the `VERDICT` line.
 
 ```
-https://wamphyre.github.io/PSAITO/?log=1&logserver=http://<PC-IP>:8080/log&auto=bagagwa_uaf_1320.js&max=1
+https://so9aa.github.io/hope-ds-work/?log=1&logserver=https://<your-tunnel-host>/log&auto=bagagwa_uaf_1320.js&max=1
 ```
 
 Possible verdicts: `PRIMITIVO VIVO` (the decrement hit), `EFECTO DETECTADO`

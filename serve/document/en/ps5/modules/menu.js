@@ -9,10 +9,10 @@
     let pb = QP.get("pb") || "payloads/";
     if (!pb.endsWith("/")) pb += "/";
 
-    // [BragaTy] payload segura por defecto tras el exploit: aio_reach_1320.js.
-    // BAGAGWA debe ser disparado explícitamente con ?auto=bagagwa_uaf_1320.js.
+    // Use the harmless hello canary by default after the exploit.
+    // BAGAGWA must be launched explicitly from the payload panel or via ?auto=bagagwa_uaf_1320.js.
     // ?auto=<archivo.js> lo cambia; ?auto=0 lo desactiva.
-    const DEF_PAYLOAD = "aio_reach_1320.js";
+    const DEF_PAYLOAD = "hello_1320.js";
     let auto = QP.get("auto");
     if (auto === null) auto = DEF_PAYLOAD;
     let autoTimer = 0;
@@ -38,6 +38,7 @@
         "z-index:50;display:none}" +
         "#pnl button{background:#0057e0;color:#fff;border:0;border-radius:4px;" +
         "padding:6px 10px;font-weight:600;cursor:pointer;margin:2px}" +
+        "#pnl button:disabled{opacity:.45;cursor:not-allowed}" +
         "#pnl input{width:150px;background:#030508;color:#c0d0e8;" +
         "border:1px solid #0d1825;border-radius:4px;padding:4px}" +
         "#plg{background:#030508;border:1px solid #0d1825;border-radius:4px;" +
@@ -58,15 +59,16 @@
         '<span class="h">BragaTy · PAYLOADS</span> ' +
         '<span id="pmode">—</span><br>' +
         '<select id="psel"></select> <input id="pcustom" placeholder="o archivo.js">' +
-        '<div><button id="prun">RUN</button>' +
-        '<button id="ptestall" style="background:#0d7a52">TEST ALL</button>' +
+        '<div><button id="prun" disabled>RUN</button>' +
+        '<button id="ptestall" style="background:#0d7a52" disabled>TEST ALL</button>' +
         '<button id="pgithub" style="background:#6f42c1">GITHUB LOG</button>' +
+        '<button id="pdiscord" style="background:#5865f2">SEND TO DISCORD</button>' +
         '<button id="pstop" style="background:#552222">RESET</button>' +
         '<button id="pstop2" style="background:#7a1f1f">STOP</button>' +
         '<button id="plogdl" style="background:#555f00">DOWNLOAD LOG</button>' +
         '<button id="plogclr" style="background:#333">CLEAR</button></div>' +
         'URL: <input id="purl" style="width:290px" placeholder="http://host/payload.js">' +
-        '<div><button id="purlrun" style="background:#00764f">RUN URL</button></div>' +
+        '<div><button id="purlrun" style="background:#00764f" disabled>RUN URL</button></div>' +
         '<div id="plg">ready.</div>';
     document.body.appendChild(pnl);
     // El panel se muestra DESDE YA (no solo tras onBridgeReady): si el exploit
@@ -106,6 +108,7 @@
             for (const l of lines) logBuf.push(l);
         }
     } catch (e) {}
+    const PAGE_LOG_START = logBuf.length;
     function persistLog() {
         storeDirty = true;
         if (storeTimer) return;
@@ -122,6 +125,9 @@
         if (logBuf.length > LOG_CAP) logBuf.splice(0, logBuf.length - LOG_CAP);
         persistLog();
     }
+    const PAGE_RUN_ID = QP.get("run") || Date.now().toString(36);
+    logAll(`[page] run=${PAGE_RUN_ID} started=${new Date().toISOString()}`
+        + ` build=${QP.get("build") || "unversioned"}`);
 
     // El exploit escribe su propio log en #scr (screenLine), NO via log() del
     // bridge. Sin capturarlo, el boton de descarga perderia justo el log de
@@ -166,6 +172,15 @@
         d.textContent = (d.textContent + "\n" + s).split("\n").slice(-1000).join("\n");
         if (atBottom) d.scrollTop = d.scrollHeight;
     }
+    function bridgeApiReady() {
+        return !!(global.PS5 && global.PS5.ready === true
+            && typeof global.syscall === "function"
+            && typeof global.SYSCALL === "object");
+    }
+    function setPayloadControlsEnabled(enabled) {
+        for (const id of ["#prun", "#ptestall", "#purlrun"])
+            pnl.querySelector(id).disabled = !enabled;
+    }
     global.__psaitoLog = () => logBuf.join("\n");
     global.__psaitoAppend = (s) => logAll(s);
     function downloadLog() {
@@ -192,77 +207,146 @@
             x.send();
         } catch (e) { cb("throw:" + e, null); }
     }
-    const DISCORD_WEBHOOK_URL = (() => {
+    const RELAY_KEY = "psaito:relayEndpoint";
+    function getDiscordRelay() {
         try {
-            const q = new URLSearchParams(location.search).get("discord");
-            if (q) return q;
-            if (window.DISCORD_WEBHOOK_URL) return window.DISCORD_WEBHOOK_URL;
-            return "https://discord.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
-        } catch (e) {
-            return "";
-        }
-    })();
-
-    function sendDiscordPayloadLog(name, status) {
-        const text = getLogText();
-        if (!text || !text.trim()) return;
-        const payloadText = String(text).trim();
-        const label = `**${status.toUpperCase()}** payload: ${name}`;
-        try {
-            const form = new FormData();
-            form.append("payload_json", JSON.stringify({
-                content: label + "\n" + payloadText.slice(0, 1800)
-            }));
-            form.append("file", new Blob([payloadText], { type: "text/plain" }), name.replace(/[^a-z0-9_.-]/gi, "_") + ".log.txt");
-            fetch(DISCORD_WEBHOOK_URL, {
-                method: "POST",
-                body: form,
-                mode: "no-cors",
-                cache: "no-store"
-            }).catch(() => {});
-        } catch (e) {}
-        try {
-            fetch(DISCORD_WEBHOOK_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ content: label + "\n" + payloadText.slice(0, 1800) }),
-                mode: "cors",
-                cache: "no-store"
-            }).catch(() => {});
-        } catch (e) {}
+            const fromQuery = QP.get("relay");
+            let raw = fromQuery;
+            if (!raw) raw = localStorage.getItem(RELAY_KEY) || "";
+            if (!raw) return "";
+            const url = new URL(raw, location.href);
+            if (url.protocol !== "https:" && url.hostname !== "localhost"
+                    && url.hostname !== "127.0.0.1") return "";
+            if (url.username || url.password) return "";
+            url.search = "";
+            url.hash = "";
+            if (/\/log\/?$/.test(url.pathname))
+                url.pathname = url.pathname.replace(/\/log\/?$/, "/discord-log");
+            else if (!/\/discord-log\/?$/.test(url.pathname))
+                url.pathname = url.pathname.replace(/\/+$/, "") + "/discord-log";
+            return url.toString();
+        } catch (e) { return ""; }
     }
-    function runSource(name, src) {
+
+    async function uploadDiscordLog(label, text, filename) {
+        const relay = getDiscordRelay();
+        if (!relay) throw new Error("HTTPS log relay is not configured; set it on the launcher first");
+        let relayToken = "";
+        try { relayToken = localStorage.getItem("psaito:relayToken") || ""; } catch (e) {}
+        if (!relayToken) throw new Error("relay access token is not configured on the launcher");
+        if (!text || !String(text).trim()) throw new Error("log is empty");
+        let payloadText = String(text).trim();
+        const maxBytes = 700 * 1024;
+        if (new Blob([payloadText]).size > maxBytes) {
+            let keep = Math.floor(payloadText.length * maxBytes / new Blob([payloadText]).size);
+            payloadText = "[older log text omitted to fit relay limit]\n"
+                + payloadText.slice(-Math.max(1, keep));
+            while (new Blob([payloadText]).size > maxBytes)
+                payloadText = payloadText.slice(Math.max(0, payloadText.indexOf("\n") + 1));
+        }
+        try {
+            const response = await fetch(relay, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Relay-Token": relayToken
+                },
+                body: JSON.stringify({
+                    label: String(label).slice(0, 400),
+                    run_id: PAGE_RUN_ID,
+                    filename,
+                    text: payloadText
+                }),
+                mode: "cors",
+                cache: "no-store",
+                credentials: "omit"
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result.ok !== true)
+                throw new Error(result.error || ("relay HTTP " + response.status));
+        } catch (e) {
+            throw new Error("Discord request failed: " + String(e && e.message || e));
+        }
+    }
+    async function sendDiscordPayloadLog(name, status) {
+        const text = logBuf.slice(PAGE_LOG_START).join("\n");
+        if (!text || !text.trim()) return;
+        const filename = name.replace(/[^a-z0-9_.-]/gi, "_") + ".log.txt";
+        try {
+            await uploadDiscordLog(`**${status.toUpperCase()}** payload: ${name}`, text, filename);
+        } catch (e) {
+            glog("!! " + String(e && e.message || e));
+        }
+    }
+    async function sendFullLogToDiscord(label = "MANUAL PS5 run log") {
+        const button = pnl.querySelector("#pdiscord");
+        captureScr();
+        // Manual upload is for this page/run only; persisted older logs remain
+        // available through DOWNLOAD LOG, but must not masquerade as a new test.
+        const text = logBuf.slice(PAGE_LOG_START).join("\n");
+        if (!text || !text.trim()) {
+            glog("!! no log content to send");
+            return;
+        }
+        button.disabled = true;
+        try {
+            const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+            await uploadDiscordLog("**" + label + "**", text, `ps5-run-${stamp}.log.txt`);
+            glog("== Discord log delivered through configured relay ==");
+        } catch (e) {
+            glog("!! Discord log upload failed: " + String(e && e.message || e));
+        } finally {
+            button.disabled = false;
+        }
+    }
+    async function runSource(name, src) {
+        if (!bridgeApiReady()) {
+            glog("!! blocked payload launch: bridge API is not ready");
+            return;
+        }
         glog("== run " + name + " (" + src.length + "B) ==");
         let ok = true;
         try {
-            (0, eval)(src);
-            glog("== end " + name + " (no synchronous throw) ==");
+            let result = (0, eval)(src);
+            if (result && typeof result.then === "function") result = await result;
+            if (result === false) {
+                ok = false;
+                glog("!! payload reported unsuccessful completion: " + name);
+            } else {
+                glog("== end " + name + " ==");
+            }
         } catch (e) {
             ok = false;
             glog("!! ERROR " + name + ": " + (e && e.message || e));
         }
-        setTimeout(() => {
-            sendDiscordPayloadLog(name, ok ? "done" : "failed");
-            const queue = JSON.parse(sessionStorage.getItem("psaito:autoQueue") || "[]");
-            const current = new URLSearchParams(location.search).get("auto");
-            if (!queue.length || !current) return;
-            const index = queue.indexOf(current);
-            const nextPayload = queue[index + 1];
-            if (nextPayload) {
-                sessionStorage.setItem("psaito:autoIndex", String(index + 1));
-                const base = new URL("https://so9aa.github.io/hope-ds-work/runtime.html");
-                base.searchParams.set("go", "1");
-                base.searchParams.set("auto", nextPayload);
-                setTimeout(() => { location.href = base.toString(); }, 1200);
-            } else {
-                sessionStorage.removeItem("psaito:autoQueue");
-                sessionStorage.removeItem("psaito:autoIndex");
+        await sendDiscordPayloadLog(name, ok ? "done" : "failed");
+        const queue = JSON.parse(sessionStorage.getItem("psaito:autoQueue") || "[]");
+        const current = new URLSearchParams(location.search).get("auto");
+        if (!queue.length || !current) return;
+        const index = queue.indexOf(current);
+        const nextPayload = queue[index + 1];
+        if (nextPayload) {
+            sessionStorage.setItem("psaito:autoIndex", String(index + 1));
+            const base = new URL("https://so9aa.github.io/hope-ds-work/runtime.html");
+            base.searchParams.set("go", "1");
+            base.searchParams.set("auto", nextPayload);
+            for (const p of ["logserver", "relay", "run", "log", "rop", "max", "rd", "n", "cap", "gap", "lines"]) {
+                const value = new URLSearchParams(location.search).get(p);
+                if (value !== null) base.searchParams.set(p, value);
             }
-        }, 700);
+            setTimeout(() => { location.href = base.toString(); }, 1200);
+        } else {
+            sessionStorage.removeItem("psaito:autoQueue");
+            sessionStorage.removeItem("psaito:autoIndex");
+        }
     }
     function runFile(name) {
         fetchText(pb + encodeURIComponent(name), (err, src) => {
-            if (err) { glog("!! fetch " + name + ": " + err); return; }
+            if (err) {
+                glog("!! fetch " + name + ": " + err);
+                sendFullLogToDiscord("Payload fetch failed");
+                return;
+            }
             runSource(name, src);
         });
     }
@@ -326,6 +410,7 @@
     pnl.querySelector("#prun").addEventListener("click", runNamed);
     pnl.querySelector("#ptestall").addEventListener("click", runAllPayloads);
     pnl.querySelector("#pgithub").addEventListener("click", openGitHubIssueWithLog);
+    pnl.querySelector("#pdiscord").addEventListener("click", sendFullLogToDiscord);
     pnl.querySelector("#plogdl").addEventListener("click", downloadLog);
     dlfab.addEventListener("click", downloadLog);
     pnl.querySelector("#pstop2").addEventListener("click", stopExploit);
@@ -360,7 +445,16 @@
     }
 
     global.onBridgeReady = function (ps5) {
+        const apiReady = ps5 && ps5.ready === true
+            && typeof global.syscall === "function"
+            && typeof global.SYSCALL === "object";
+        setPayloadControlsEnabled(apiReady);
         pnl.style.display = "block";
+        if (!apiReady) {
+            pnl.querySelector("#pmode").textContent = "bridge API incomplete";
+            glog("!! bridge callback lacked syscall globals; payload launch remains disabled");
+            return;
+        }
         pnl.querySelector("#pmode").textContent =
             "fw " + ps5.fw + " · mode " + ps5.mode +
             (ps5.mode === "ROP" ? (ps5.stubMode ? " (X1NON stubs)" : "") : " (! syscall no-op)");
@@ -394,6 +488,7 @@
             glog("!! bridge did not arrive within 60s. The WebKit exploit did not reach SUCCESS.");
             glog("   the exploit retries on its own; check #scr (exploit log) and the banner.");
             glog("   if it stays the same, close and reopen the app (Y2JB startup is flaky).");
+            sendFullLogToDiscord("No bridge after 60 seconds — partial run log");
         }
     }, 60000);
 })(window);

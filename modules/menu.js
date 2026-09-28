@@ -125,7 +125,7 @@
         if (logBuf.length > LOG_CAP) logBuf.splice(0, logBuf.length - LOG_CAP);
         persistLog();
     }
-    const PAGE_RUN_ID = Date.now().toString(36);
+    const PAGE_RUN_ID = QP.get("run") || Date.now().toString(36);
     logAll(`[page] run=${PAGE_RUN_ID} started=${new Date().toISOString()}`
         + ` build=${QP.get("build") || "unversioned"}`);
 
@@ -207,33 +207,63 @@
             x.send();
         } catch (e) { cb("throw:" + e, null); }
     }
-    const DISCORD_WEBHOOK_URL = (() => {
+    const RELAY_KEY = "psaito:relayEndpoint";
+    function getDiscordRelay() {
         try {
-            const q = new URLSearchParams(location.search).get("discord");
-            if (q) return q;
-            if (window.DISCORD_WEBHOOK_URL) return window.DISCORD_WEBHOOK_URL;
-            return "https://discord.com/api/webhooks/1553463314422698085/tmWHGyzq7leGIFI1km9VbvnkVRsTexrL-JOsdPVoWoMR1AF7sfHVcx-zbf_DFbW2BEMj";
-        } catch (e) {
-            return "";
-        }
-    })();
+            const fromQuery = QP.get("relay");
+            let raw = fromQuery;
+            if (!raw) raw = localStorage.getItem(RELAY_KEY) || "";
+            if (!raw) return "";
+            const url = new URL(raw, location.href);
+            if (url.protocol !== "https:" && url.hostname !== "localhost"
+                    && url.hostname !== "127.0.0.1") return "";
+            if (url.username || url.password) return "";
+            url.search = "";
+            url.hash = "";
+            if (/\/log\/?$/.test(url.pathname))
+                url.pathname = url.pathname.replace(/\/log\/?$/, "/discord-log");
+            else if (!/\/discord-log\/?$/.test(url.pathname))
+                url.pathname = url.pathname.replace(/\/+$/, "") + "/discord-log";
+            return url.toString();
+        } catch (e) { return ""; }
+    }
 
     async function uploadDiscordLog(label, text, filename) {
-        if (!DISCORD_WEBHOOK_URL || !text || !String(text).trim())
-            throw new Error("Discord webhook is not configured or log is empty");
-        const payloadText = String(text).trim();
+        const relay = getDiscordRelay();
+        if (!relay) throw new Error("HTTPS log relay is not configured; set it on the launcher first");
+        let relayToken = "";
+        try { relayToken = localStorage.getItem("psaito:relayToken") || ""; } catch (e) {}
+        if (!relayToken) throw new Error("relay access token is not configured on the launcher");
+        if (!text || !String(text).trim()) throw new Error("log is empty");
+        let payloadText = String(text).trim();
+        const maxBytes = 700 * 1024;
+        if (new Blob([payloadText]).size > maxBytes) {
+            let keep = Math.floor(payloadText.length * maxBytes / new Blob([payloadText]).size);
+            payloadText = "[older log text omitted to fit relay limit]\n"
+                + payloadText.slice(-Math.max(1, keep));
+            while (new Blob([payloadText]).size > maxBytes)
+                payloadText = payloadText.slice(Math.max(0, payloadText.indexOf("\n") + 1));
+        }
         try {
-            const form = new FormData();
-            form.append("payload_json", JSON.stringify({
-                content: label + "\n" + payloadText.slice(0, 1800)
-            }));
-            form.append("file", new Blob([payloadText], { type: "text/plain" }), filename);
-            await fetch(DISCORD_WEBHOOK_URL, {
+            const response = await fetch(relay, {
                 method: "POST",
-                body: form,
-                mode: "no-cors",
-                cache: "no-store"
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Relay-Token": relayToken
+                },
+                body: JSON.stringify({
+                    label: String(label).slice(0, 400),
+                    run_id: PAGE_RUN_ID,
+                    filename,
+                    text: payloadText
+                }),
+                mode: "cors",
+                cache: "no-store",
+                credentials: "omit"
             });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result.ok !== true)
+                throw new Error(result.error || ("relay HTTP " + response.status));
         } catch (e) {
             throw new Error("Discord request failed: " + String(e && e.message || e));
         }
@@ -248,7 +278,7 @@
             glog("!! " + String(e && e.message || e));
         }
     }
-    async function sendFullLogToDiscord() {
+    async function sendFullLogToDiscord(label = "MANUAL PS5 run log") {
         const button = pnl.querySelector("#pdiscord");
         captureScr();
         // Manual upload is for this page/run only; persisted older logs remain
@@ -261,8 +291,8 @@
         button.disabled = true;
         try {
             const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-            await uploadDiscordLog("**MANUAL** PS5 run log", text, `ps5-run-${stamp}.log.txt`);
-            glog("== Discord log upload request sent; check the channel for receipt ==");
+            await uploadDiscordLog("**" + label + "**", text, `ps5-run-${stamp}.log.txt`);
+            glog("== Discord log delivered through configured relay ==");
         } catch (e) {
             glog("!! Discord log upload failed: " + String(e && e.message || e));
         } finally {
@@ -300,7 +330,7 @@
             const base = new URL("https://so9aa.github.io/hope-ds-work/runtime.html");
             base.searchParams.set("go", "1");
             base.searchParams.set("auto", nextPayload);
-            for (const p of ["discord", "logserver", "log", "rop", "max", "rd", "n", "cap", "gap", "lines"]) {
+            for (const p of ["logserver", "relay", "run", "log", "rop", "max", "rd", "n", "cap", "gap", "lines"]) {
                 const value = new URLSearchParams(location.search).get(p);
                 if (value !== null) base.searchParams.set(p, value);
             }
@@ -312,7 +342,11 @@
     }
     function runFile(name) {
         fetchText(pb + encodeURIComponent(name), (err, src) => {
-            if (err) { glog("!! fetch " + name + ": " + err); return; }
+            if (err) {
+                glog("!! fetch " + name + ": " + err);
+                sendFullLogToDiscord("Payload fetch failed");
+                return;
+            }
             runSource(name, src);
         });
     }
@@ -454,6 +488,7 @@
             glog("!! bridge did not arrive within 60s. The WebKit exploit did not reach SUCCESS.");
             glog("   the exploit retries on its own; check #scr (exploit log) and the banner.");
             glog("   if it stays the same, close and reopen the app (Y2JB startup is flaky).");
+            sendFullLogToDiscord("No bridge after 60 seconds — partial run log");
         }
     }, 60000);
 })(window);
